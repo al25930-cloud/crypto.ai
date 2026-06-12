@@ -173,18 +173,18 @@ def voting_system(
     """Combine three signals via majority voting.
 
     Each signal contributes +1 (LONG), -1 (SHORT), or 0 (neutral).
-    Total >= +2  →  LONG
-    Total <= -2  →  SHORT
-    Otherwise    →  HOLD
+    Total >= +1  ->  LONG
+    Total <= -1  ->  SHORT
+    Otherwise    ->  HOLD
 
     Returns:
         Tuple of (action: 'LONG' | 'SHORT' | 'HOLD', total_score: int).
     """
     total = sig_a + sig_b + sig_c
 
-    if total >= 2:
+    if total >= 1:
         return ("LONG", total)
-    elif total <= -2:
+    elif total <= -1:
         return ("SHORT", total)
     return ("HOLD", total)
 

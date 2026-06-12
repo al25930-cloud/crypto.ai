@@ -53,10 +53,11 @@ SYMBOLS = ["BTC/USDT", "ETH/USDT"]
 TIMEFRAME = "1h"
 START_DATE = "2024-01-01"
 END_DATE = "2025-12-31"
-INITIAL_CAPITAL = 100_000  # Simulated USD (high enough to trade BTC without fractional units)
+INITIAL_CAPITAL = 500_000  # Simulated USD (high enough to trade BTC with margin)
 # Combined: 0.04% taker fee + 0.05% slippage = 0.09% total per-trade cost.
 # backtesting.py has no built-in slippage param, so we fold it into commission.
 COMMISSION = 0.0009  # 0.09% (0.04% fee + 0.05% slippage)
+POSITION_SIZE = 0.5  # Use 50% of equity per trade to maintain margin buffer
 
 # =============================================================================
 # Logging Setup
@@ -331,10 +332,10 @@ class CryptoStrategy(Strategy):
         # Enter trades
         if action == "LONG" and not self.position.is_long:
             sl, tp = calculate_risk(close, atr, "LONG")
-            self.buy(sl=sl, tp=tp)
+            self.buy(sl=sl, tp=tp, size=POSITION_SIZE)
         elif action == "SHORT" and not self.position.is_short:
             sl, tp = calculate_risk(close, atr, "SHORT")
-            self.sell(sl=sl, tp=tp)
+            self.sell(sl=sl, tp=tp, size=POSITION_SIZE)
 
 
 # =============================================================================
@@ -360,6 +361,7 @@ def run_backtest(symbol: str, df: pd.DataFrame) -> dict:
         cash=INITIAL_CAPITAL,
         commission=COMMISSION,
         exclusive_orders=True,
+        finalize_trades=True,
     )
 
     stats = bt.run()
