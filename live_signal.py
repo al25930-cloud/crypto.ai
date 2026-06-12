@@ -31,6 +31,7 @@ from config import (
     rsi_col,
     atr_col,
     vol_sma_col,
+    adx_col,
 )
 from signals import (
     compute_indicators,
@@ -39,6 +40,7 @@ from signals import (
     signal_c_volume_breakout,
     voting_system,
     calculate_risk,
+    apply_market_regime,
 )
 
 # =============================================================================
@@ -225,6 +227,10 @@ def evaluate_signal(df: pd.DataFrame) -> dict:
         last["BB_UPPER"],
         last["BB_LOWER"],
     )
+
+    # Apply market regime filter
+    adx_val = float(last[adx_col()]) if adx_col() in last.index else 25.0
+    sig_a, sig_b, sig_c = apply_market_regime(sig_a, sig_b, sig_c, adx_val)
 
     action, total_score = voting_system(sig_a, sig_b, sig_c)
 

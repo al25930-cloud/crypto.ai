@@ -25,7 +25,9 @@ from config import (
     ATR_PERIOD,
     ATR_STOP_MULT,
     ATR_TP_MULT,
-    VOTING_THRESHOLD,
+    ADX_PERIOD,
+    ADX_TREND_THRESHOLD,
+    ADX_RANGE_THRESHOLD,
     ema_fast_col,
     ema_slow_col,
     rsi_col,
@@ -33,6 +35,7 @@ from config import (
     stdev_col,
     atr_col,
     vol_sma_col,
+    adx_col,
 )
 
 # =============================================================================
@@ -60,11 +63,12 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # --- RSI ---
     df[rsi_col()] = ta.rsi(df["close"], length=RSI_PERIOD)
 
-    # --- Z-Score (Mean Reversion) ---
-    df[sma_col()] = ta.sma(df["close"], length=ZSCORE_PERIOD)
-    df[stdev_col()] = ta.stdev(df["close"], length=ZSCORE_PERIOD)
+    # --- Z-Score (Mean Reversion) — use shifted close to avoid look-ahead bias ---
+    shifted = df["close"].shift(1)
+    df[sma_col()] = ta.sma(shifted, length=ZSCORE_PERIOD)
+    df[stdev_col()] = ta.stdev(shifted, length=ZSCORE_PERIOD)
     df["Z_SCORE"] = (
-        (df["close"] - df[sma_col()]) / df[stdev_col()].replace(0, np.nan)
+        (shifted - df[sma_col()]) / df[stdev_col()].replace(0, np.nan)
     )
 
     # --- Bollinger Bands ---
@@ -82,6 +86,11 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- ATR ---
     df[atr_col()] = ta.atr(df["high"], df["low"], df["close"], length=ATR_PERIOD)
+
+    # --- ADX (market regime) ---
+    adx_df = ta.adx(df["high"], df["low"], df["close"], length=ADX_PERIOD)
+    col = next(c for c in adx_df.columns if c.startswith("ADX_"))
+    df[adx_col()] = adx_df[col]
 
     return df
 
@@ -171,6 +180,32 @@ def signal_c_volume_breakout(
 
 
 # =============================================================================
+# Market Regime Filter (ADX-based)
+# =============================================================================
+
+
+def apply_market_regime(
+    sig_a: int, sig_b: int, sig_c: int, adx: float
+) -> tuple[int, int, int]:
+    """Suppress disfavored signals based on ADX market regime.
+
+    Trending (ADX > 25):  suppress Signal B (mean‑reversion) — trend rules.
+    Ranging  (ADX < 20):  suppress Signal A (trend) — reversals dominate.
+    Neutral  (20‑25):     all signals pass through unchanged.
+
+    Signal C (volume breakout) is always active — it works in any regime.
+    """
+    if pd.isna(adx):
+        return sig_a, sig_b, sig_c
+
+    if adx > ADX_TREND_THRESHOLD:
+        return sig_a, 0, sig_c        # suppress mean‑reversion
+    elif adx < ADX_RANGE_THRESHOLD:
+        return 0, sig_b, sig_c        # suppress trend
+    return sig_a, sig_b, sig_c
+
+
+# =============================================================================
 # Voting System
 # =============================================================================
 
@@ -178,23 +213,25 @@ def signal_c_volume_breakout(
 def voting_system(
     sig_a: int, sig_b: int, sig_c: int
 ) -> tuple[str, int]:
-    """Combine three signals via majority voting.
+    """Combine three signals via strict majority voting (2 of 3 required).
 
     Each signal contributes +1 (LONG), -1 (SHORT), or 0 (neutral).
-    Total >=  VOTING_THRESHOLD  ->  LONG
-    Total <= -VOTING_THRESHOLD  ->  SHORT
-    Otherwise                   ->  HOLD
+    At least TWO signals must agree on the same direction:
+      2+ LONG votes  ->  LONG
+      2+ SHORT votes ->  SHORT
+      Otherwise      ->  HOLD
 
     Returns:
         Tuple of (action: 'LONG' | 'SHORT' | 'HOLD', total_score: int).
     """
-    total = sig_a + sig_b + sig_c
+    long_votes = int(sig_a == 1) + int(sig_b == 1) + int(sig_c == 1)
+    short_votes = int(sig_a == -1) + int(sig_b == -1) + int(sig_c == -1)
 
-    if total >= VOTING_THRESHOLD:
-        return ("LONG", total)
-    elif total <= -VOTING_THRESHOLD:
-        return ("SHORT", total)
-    return ("HOLD", total)
+    if long_votes >= 2:
+        return ("LONG", long_votes)
+    elif short_votes >= 2:
+        return ("SHORT", -short_votes)
+    return ("HOLD", 0)
 
 
 # =============================================================================

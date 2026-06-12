@@ -39,7 +39,9 @@ from config import (
     ATR_PERIOD,
     ATR_STOP_MULT,
     ATR_TP_MULT,
-    VOTING_THRESHOLD,
+    ADX_PERIOD,
+    ADX_TREND_THRESHOLD,
+    ADX_RANGE_THRESHOLD,
     COMMISSION,
     POSITION_SIZE,
     INITIAL_CAPITAL,
@@ -55,6 +57,7 @@ from signals import (
     signal_c_volume_breakout,
     voting_system,
     calculate_risk,
+    apply_market_regime,
 )
 
 # =============================================================================
@@ -240,7 +243,7 @@ class CryptoStrategy(Strategy):
     atr_period: int
     atr_stop_mult: float
     atr_tp_mult: float
-    voting_threshold: int
+    adx_period: int
 
     def __init__(self, broker, data, params: Optional[dict] = None) -> None:  # noqa: D107
         super().__init__(broker, data, params)
@@ -261,7 +264,7 @@ class CryptoStrategy(Strategy):
         self.atr_period = p.get("atr_period", ATR_PERIOD)
         self.atr_stop_mult = p.get("atr_stop_mult", ATR_STOP_MULT)
         self.atr_tp_mult = p.get("atr_tp_mult", ATR_TP_MULT)
-        self.voting_threshold = p.get("voting_threshold", VOTING_THRESHOLD)
+        self.adx_period = p.get("adx_period", ADX_PERIOD)
 
     def init(self):  # noqa: D102
         # backtesting.py's self.I() passes numpy arrays to indicator
@@ -295,7 +298,9 @@ class CryptoStrategy(Strategy):
             ).to_numpy()
 
         def _zscore(arr: np.ndarray, length: int) -> np.ndarray:
-            s = pd.Series(arr)
+            # Shift close by 1 to avoid look-ahead bias — use only
+            # information known at the time of decision.
+            s = pd.Series(arr).shift(1)
             sma = ta.sma(s, length=length)
             std = ta.stdev(s, length=length)
             std = std.replace(0, np.nan)
@@ -326,6 +331,15 @@ class CryptoStrategy(Strategy):
         self.atr = self.I(_atr, self.data.High, self.data.Low,
                           self.data.Close, length=self.atr_period)
 
+        # --- ADX (market regime) ---
+        def _adx(h: np.ndarray, l: np.ndarray, c: np.ndarray, length: int) -> np.ndarray:
+            adx_df = ta.adx(pd.Series(h), pd.Series(l), pd.Series(c), length=length)
+            col = next(c for c in adx_df.columns if c.startswith("ADX_"))
+            return adx_df[col].to_numpy()
+
+        self.adx = self.I(_adx, self.data.High, self.data.Low,
+                          self.data.Close, length=self.adx_period)
+
     def next(self):  # noqa: D102
         # Ensure enough bars have passed for all indicators to warm up
         min_bars = max(
@@ -348,6 +362,7 @@ class CryptoStrategy(Strategy):
         bb_upper = self.bb_upper[-1]
         bb_lower = self.bb_lower[-1]
         atr = self.atr[-1]
+        adx = self.adx[-1]
 
         # Skip if any indicator is NaN
         if any(
@@ -364,6 +379,7 @@ class CryptoStrategy(Strategy):
                 bb_upper,
                 bb_lower,
                 atr,
+                adx,
             ]
         ):
             return
@@ -374,6 +390,10 @@ class CryptoStrategy(Strategy):
         sig_c = signal_c_volume_breakout(
             close, vol, vol_sma, bb_upper, bb_lower
         )
+
+        # Apply market regime filter (ADX-based)
+        sig_a, sig_b, sig_c = apply_market_regime(sig_a, sig_b, sig_c, adx)
+
         action, _total = voting_system(sig_a, sig_b, sig_c)
 
         # Enter trades

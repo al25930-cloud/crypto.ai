@@ -164,11 +164,10 @@ def run_optimization(
 
     def objective(trial: optuna.Trial) -> float:
         params = {
-            "voting_threshold": trial.suggest_categorical("voting_threshold", [1, 2]),
             "ema_fast": trial.suggest_categorical("ema_fast", [5, 9, 12]),
             "ema_slow": trial.suggest_categorical("ema_slow", [20, 21, 26]),
-            "zscore_threshold": trial.suggest_categorical("zscore_threshold", [1.5, 2.0, 2.5]),
-            "volume_multiplier": trial.suggest_categorical("volume_multiplier", [1.5, 2.0, 2.5]),
+            "zscore_threshold": 2.5,         # fixed — Step 2 robust default
+            "volume_multiplier": 2.0,         # fixed — Step 2 robust default
             "atr_stop_mult": trial.suggest_categorical("atr_stop_mult", [1.5, 2.0, 2.5]),
             "atr_tp_mult": trial.suggest_categorical("atr_tp_mult", [2.5, 3.0, 4.0]),
         }
@@ -328,13 +327,12 @@ def run_fallback(
 
     def objective(trial: optuna.Trial) -> float:
         params = {
-            "voting_threshold": trial.suggest_categorical("voting_threshold", [1, 2]),
             "ema_fast": trial.suggest_categorical("ema_fast", [5, 9, 12]),
             "ema_slow": trial.suggest_categorical("ema_slow", [20, 21, 26]),
-            "zscore_threshold": 2.0,          # fixed
-            "volume_multiplier": 2.0,         # fixed
+            "zscore_threshold": 2.0,          # fixed fallback
+            "volume_multiplier": 2.0,         # fixed fallback
             "atr_stop_mult": trial.suggest_categorical("atr_stop_mult", [1.5, 2.0, 2.5]),
-            "atr_tp_mult": 3.0,               # fixed
+            "atr_tp_mult": 3.0,               # fixed fallback
         }
         if params["ema_slow"] <= params["ema_fast"]:
             return 0.0
@@ -465,11 +463,10 @@ def main() -> None:
 
         # Phase 3 — optimize (or use current config defaults)
         if args.skip_optimize:
-            from config import (VOTING_THRESHOLD, EMA_FAST, EMA_SLOW,
+            from config import (EMA_FAST, EMA_SLOW,
                                 ZSCORE_THRESHOLD, VOLUME_MULTIPLIER,
                                 ATR_STOP_MULT, ATR_TP_MULT)
             best_params = {
-                "voting_threshold": VOTING_THRESHOLD,
                 "ema_fast": EMA_FAST,
                 "ema_slow": EMA_SLOW,
                 "zscore_threshold": ZSCORE_THRESHOLD,

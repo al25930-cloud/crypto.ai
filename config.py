@@ -13,7 +13,7 @@ overwrite them via Phase 5).
 # Strategy Parameters (tunable via optimization)
 # =============================================================================
 
-VOTING_THRESHOLD = 1       # total >= this  -> LONG,  total <= -this -> SHORT
+VOTING_THRESHOLD = 2       # deprecated — voting_system now uses strict 2-of-3 majority
 
 # Signal A – Trend Following
 EMA_FAST = 9
@@ -22,18 +22,24 @@ RSI_PERIOD = 14
 
 # Signal B – Mean Reversion
 ZSCORE_PERIOD = 20
-ZSCORE_THRESHOLD = 2.0
+ZSCORE_THRESHOLD = 2.5       # ±2.5 sigma (was 2.0) — fewer false positives
 
 # Signal C – Volume Breakout
 BB_PERIOD = 20
 BB_STD = 2.0
 VOLUME_PERIOD = 20
-VOLUME_MULTIPLIER = 1.5
+VOLUME_MULTIPLIER = 2.0       # 2.0× average volume (was 1.5) — higher bar for breakouts
 
 # Risk Management
 ATR_PERIOD = 14
 ATR_STOP_MULT = 1.5
 ATR_TP_MULT = 2.5
+
+# Market Regime Filter (ADX)
+ADX_PERIOD = 14
+ADX_TREND_THRESHOLD = 25    # ADX > 25 -> trending -> favor Signal A
+ADX_RANGE_THRESHOLD = 20    # ADX < 20 -> ranging  -> favor Signal B
+                             # 20-25 -> neutral  -> all signals active
 
 # =============================================================================
 # Fixed Constants (NOT optimized)
@@ -54,7 +60,6 @@ END_DATE = "2025-12-31"
 # Ordered list of parameter keys that optimize.py will tune.
 # Must match the keys used in Strategy.__init__'s params dict.
 OPTIMIZE_PARAMS = [
-    "voting_threshold",
     "ema_fast",
     "ema_slow",
     "zscore_threshold",
@@ -85,3 +90,6 @@ def atr_col() -> str:
 
 def vol_sma_col() -> str:
     return f"VOLUME_SMA_{VOLUME_PERIOD}"
+
+def adx_col() -> str:
+    return f"ADX_{ADX_PERIOD}"
