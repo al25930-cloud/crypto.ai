@@ -53,7 +53,7 @@ SYMBOLS = ["BTC/USDT", "ETH/USDT"]
 TIMEFRAME = "1h"
 START_DATE = "2024-01-01"
 END_DATE = "2025-12-31"
-INITIAL_CAPITAL = 1000  # Simulated USD
+INITIAL_CAPITAL = 100_000  # Simulated USD (high enough to trade BTC without fractional units)
 # Combined: 0.04% taker fee + 0.05% slippage = 0.09% total per-trade cost.
 # backtesting.py has no built-in slippage param, so we fold it into commission.
 COMMISSION = 0.0009  # 0.09% (0.04% fee + 0.05% slippage)
@@ -221,44 +221,63 @@ class CryptoStrategy(Strategy):
     """
 
     def init(self):  # noqa: D102
-        close = self.data.Close
-        high = self.data.High
-        low = self.data.Low
-        vol = self.data.Volume
+        # backtesting.py's self.I() passes numpy arrays to indicator functions,
+        # but pandas_ta expects pandas Series.  Every wrapper below converts
+        # the numpy array(s) to Series before calling the pandas_ta function and
+        # returns a numpy array of the same length.
 
-        # --- EMAs ---
-        self.ema9 = self.I(ta.ema, close, EMA_FAST)
-        self.ema21 = self.I(ta.ema, close, EMA_SLOW)
+        # ── helpers ──────────────────────────────────────────────────────
+        def _ema(arr: np.ndarray, length: int) -> np.ndarray:
+            return ta.ema(pd.Series(arr), length=length).to_numpy()
 
-        # --- RSI ---
-        self.rsi = self.I(ta.rsi, close, RSI_PERIOD)
+        def _rsi(arr: np.ndarray, length: int) -> np.ndarray:
+            return ta.rsi(pd.Series(arr), length=length).to_numpy()
 
-        # --- Z-Score (custom indicator) ---
-        def _zscore(c: pd.Series, length: int = ZSCORE_PERIOD) -> pd.Series:
-            sma = ta.sma(c, length=length)
-            std = ta.stdev(c, length=length)
+        def _sma(arr: np.ndarray, length: int) -> np.ndarray:
+            return ta.sma(pd.Series(arr), length=length).to_numpy()
+
+        def _atr(
+            high_arr: np.ndarray,
+            low_arr: np.ndarray,
+            close_arr: np.ndarray,
+            length: int,
+        ) -> np.ndarray:
+            return ta.atr(
+                pd.Series(high_arr),
+                pd.Series(low_arr),
+                pd.Series(close_arr),
+                length=length,
+            ).to_numpy()
+
+        def _zscore(arr: np.ndarray, length: int = ZSCORE_PERIOD) -> np.ndarray:
+            s = pd.Series(arr)
+            sma = ta.sma(s, length=length)
+            std = ta.stdev(s, length=length)
             std = std.replace(0, np.nan)
-            return (c - sma) / std
+            return ((s - sma) / std).to_numpy()
 
-        self.zscore = self.I(_zscore, close)
+        def _bbu(arr: np.ndarray, length: int = BB_PERIOD, std: float = BB_STD) -> np.ndarray:
+            bb = ta.bbands(pd.Series(arr), length=length, std=std)
+            # pandas_ta column names vary by version; look up by prefix.
+            col = next(c for c in bb.columns if c.startswith("BBU_"))
+            return bb[col].to_numpy()
 
-        # --- Bollinger Bands ---
-        def _bbu(c: pd.Series) -> pd.Series:
-            bb = ta.bbands(c, length=BB_PERIOD, std=BB_STD)
-            return bb[f"BBU_{BB_PERIOD}_{BB_STD}"]
+        def _bbl(arr: np.ndarray, length: int = BB_PERIOD, std: float = BB_STD) -> np.ndarray:
+            bb = ta.bbands(pd.Series(arr), length=length, std=std)
+            col = next(c for c in bb.columns if c.startswith("BBL_"))
+            return bb[col].to_numpy()
 
-        def _bbl(c: pd.Series) -> pd.Series:
-            bb = ta.bbands(c, length=BB_PERIOD, std=BB_STD)
-            return bb[f"BBL_{BB_PERIOD}_{BB_STD}"]
-
-        self.bb_upper = self.I(_bbu, close)
-        self.bb_lower = self.I(_bbl, close)
-
-        # --- Volume SMA ---
-        self.vol_sma = self.I(ta.sma, vol, VOLUME_PERIOD)
-
-        # --- ATR ---
-        self.atr = self.I(ta.atr, high, low, close, ATR_PERIOD)
+        # ── register indicators ─────────────────────────────────────────
+        self.ema9 = self.I(_ema, self.data.Close, length=EMA_FAST)
+        self.ema21 = self.I(_ema, self.data.Close, length=EMA_SLOW)
+        self.rsi = self.I(_rsi, self.data.Close, length=RSI_PERIOD)
+        self.zscore = self.I(_zscore, self.data.Close, length=ZSCORE_PERIOD)
+        self.bb_upper = self.I(_bbu, self.data.Close, length=BB_PERIOD, std=BB_STD)
+        self.bb_lower = self.I(_bbl, self.data.Close, length=BB_PERIOD, std=BB_STD)
+        self.vol_sma = self.I(_sma, self.data.Volume, length=VOLUME_PERIOD)
+        self.atr = self.I(
+            _atr, self.data.High, self.data.Low, self.data.Close, length=ATR_PERIOD
+        )
 
     def next(self):  # noqa: D102
         # Ensure enough bars have passed for all indicators to warm up
@@ -349,11 +368,11 @@ def run_backtest(symbol: str, df: pd.DataFrame) -> dict:
     print(f"\n{'='*60}")
     print(f"  Backtest Results: {symbol}")
     print(f"{'='*60}")
-    print(f"  Period:            {START_DATE} → {END_DATE}")
+    print(f"  Period:            {START_DATE} -> {END_DATE}")
     print(f"  Timeframe:         {TIMEFRAME}")
     print(f"  Starting Capital:  ${INITIAL_CAPITAL:,.2f}")
     print(f"  Commission+Slippage:{COMMISSION*100:.2f}%")
-    print(f"{'─'*60}")
+    print(f"{'-'*60}")
     print(f"  Total Trades:      {stats['# Trades']}")
     print(f"  Win Rate:          {stats['Win Rate [%]']:.2f}%")
     print(f"  Profit Factor:     {stats['Profit Factor']:.2f}")
@@ -401,7 +420,7 @@ def main() -> None:
 
     logger.info("=== Crypto Trading Bot Backtest ===")
     logger.info(
-        "Symbols: %s | Period: %s → %s | Timeframe: %s",
+        "Symbols: %s | Period: %s -> %s | Timeframe: %s",
         symbols_to_test,
         START_DATE,
         END_DATE,

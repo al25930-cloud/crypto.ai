@@ -58,9 +58,14 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- Bollinger Bands ---
     bb = ta.bbands(df["close"], length=BB_PERIOD, std=BB_STD)
-    df["BB_UPPER"] = bb[f"BBU_{BB_PERIOD}_{BB_STD}"]
-    df["BB_LOWER"] = bb[f"BBL_{BB_PERIOD}_{BB_STD}"]
-    df["BB_MIDDLE"] = bb[f"BBM_{BB_PERIOD}_{BB_STD}"]
+    # pandas_ta column names vary by version; look up by prefix.
+    df["BB_UPPER"] = next(c for c in bb.columns if c.startswith("BBU_"))
+    df["BB_LOWER"] = next(c for c in bb.columns if c.startswith("BBL_"))
+    df["BB_MIDDLE"] = next(c for c in bb.columns if c.startswith("BBM_"))
+    # Copy the actual values into the DataFrame.
+    df["BB_UPPER"] = bb[df["BB_UPPER"]]
+    df["BB_LOWER"] = bb[df["BB_LOWER"]]
+    df["BB_MIDDLE"] = bb[df["BB_MIDDLE"]]
 
     # --- Volume SMA ---
     df["VOLUME_SMA_20"] = ta.sma(df["volume"], length=VOLUME_PERIOD)

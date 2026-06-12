@@ -87,7 +87,7 @@ def load_state(path: Path = Path("last_signal.json")) -> dict:
         logger.info("Loaded last_signal.json: %s", state)
         return state
     except (json.JSONDecodeError, OSError) as e:
-        logger.warning("Corrupted last_signal.json — resetting. Error: %s", e)
+        logger.warning("Corrupted last_signal.json -- resetting. Error: %s", e)
         save_state(DEFAULT_STATE, path)
         return DEFAULT_STATE.copy()
 
@@ -153,7 +153,7 @@ def fetch_latest_candles(
         except (ccxt.NetworkError, ccxt.ExchangeError, RuntimeError) as e:
             wait = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
             logger.warning(
-                "%s: fetch attempt %d/%d failed — %s. Retrying in %ds ...",
+                "%s: fetch attempt %d/%d failed -- %s. Retrying in %ds ...",
                 symbol,
                 attempt + 1,
                 MAX_RETRIES,
@@ -268,7 +268,7 @@ def send_discord_alert(
         f"Signals: Trend={signal['sig_a']}, "
         f"MeanRev={signal['sig_b']}, "
         f"Volume={signal['sig_c']} "
-        f"→ Total={signal['total_score']} → **{action}**\n\n"
+        f"-> Total={signal['total_score']} -> **{action}**\n\n"
         f"*This is a signal. Execute manually.*"
     )
 
@@ -307,7 +307,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    logger.info("=== Crypto Trading Bot — Live Signals ===")
+    logger.info("=== Crypto Trading Bot -- Live Signals ===")
     logger.info("Symbols: %s | Timeframe: %s | Interval: %ds", SYMBOLS, TIMEFRAME, SLEEP_SECONDS)
     logger.info("Discord webhook configured: %s", webhook_url[:50] + "...")
 
@@ -328,7 +328,7 @@ def main() -> None:
                 try:
                     signal = evaluate_signal(df)
                 except Exception as e:
-                    logger.error("%s: signal evaluation failed — %s", symbol, e, exc_info=True)
+                    logger.error("%s: signal evaluation failed -- %s", symbol, e, exc_info=True)
                     continue
 
                 prev_action = state.get(symbol, "HOLD")
@@ -347,8 +347,7 @@ def main() -> None:
 
                 # Only send alert if signal changed
                 if new_action != prev_action:
-                    logger.info(
-                        "%s: signal changed %s → %s — sending alert.",
+                    logger.info(                            "%s: signal changed %s -> %s -- sending alert.",
                         symbol,
                         prev_action,
                         new_action,
@@ -384,17 +383,17 @@ def main() -> None:
                         save_state(state)
                     else:
                         logger.info(
-                            "%s: alert failed — state NOT updated. Will retry next cycle.",
+                            "%s: alert failed -- state NOT updated. Will retry next cycle.",
                             symbol,
                         )
                 else:
-                    logger.info("%s: no change (%s) — skipping alert.", symbol, new_action)
+                    logger.info("%s: no change (%s) -- skipping alert.", symbol, new_action)
 
             # Sleep until next cycle
             elapsed = (datetime.now(timezone.utc) - cycle_start).total_seconds()
             sleep_time = max(0, SLEEP_SECONDS - elapsed)
             next_check = datetime.now(timezone.utc).isoformat()
-            logger.info("Sleeping %.0fs. Next check ≈ %s", sleep_time, next_check)
+            logger.info("Sleeping %.0fs. Next check ~ %s", sleep_time, next_check)
             time.sleep(sleep_time)
 
     except KeyboardInterrupt:
