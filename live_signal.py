@@ -25,6 +25,13 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
+from config import (
+    ema_fast_col,
+    ema_slow_col,
+    rsi_col,
+    atr_col,
+    vol_sma_col,
+)
 from signals import (
     compute_indicators,
     signal_a_trend,
@@ -191,13 +198,20 @@ def evaluate_signal(df: pd.DataFrame) -> dict:
     last = df.iloc[-1]
     prev = df.iloc[-2] if len(df) >= 2 else last
 
+    # Resolve dynamic column names from config.py
+    _ema_fast = ema_fast_col()
+    _ema_slow = ema_slow_col()
+    _rsi = rsi_col()
+    _atr = atr_col()
+    _vol_sma = vol_sma_col()
+
     # Signal A (needs previous values for crossover detection)
     sig_a = signal_a_trend(
-        last["EMA_9"],
-        last["EMA_21"],
-        prev["EMA_9"],
-        prev["EMA_21"],
-        last["RSI_14"],
+        last[_ema_fast],
+        last[_ema_slow],
+        prev[_ema_fast],
+        prev[_ema_slow],
+        last[_rsi],
     )
 
     # Signal B
@@ -207,7 +221,7 @@ def evaluate_signal(df: pd.DataFrame) -> dict:
     sig_c = signal_c_volume_breakout(
         last["close"],
         last["volume"],
-        last["VOLUME_SMA_20"],
+        last[_vol_sma],
         last["BB_UPPER"],
         last["BB_LOWER"],
     )
@@ -229,7 +243,7 @@ def evaluate_signal(df: pd.DataFrame) -> dict:
 
     # Calculate risk levels for actionable signals
     if action in ("LONG", "SHORT"):
-        sl, tp = calculate_risk(result["entry_price"], last["ATR_14"], action)
+        sl, tp = calculate_risk(result["entry_price"], last[_atr], action)
         result["stop_loss"] = round(sl, 2)
         result["take_profit"] = round(tp, 2)
 

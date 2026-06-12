@@ -2,7 +2,7 @@
 Crypto Trading Bot — Backtest Module.
 
 Runs the strategy on historical data for BTC/USDT and ETH/USDT using the
-backtesting.py library. Fetches OHLCV data from Binance via ccxt and caches
+backtesting.py library.  Fetches OHLCV data from Binance via ccxt and caches
 it to CSV for faster subsequent runs.
 
 Usage:
@@ -18,6 +18,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import ccxt
 import numpy as np
@@ -25,7 +26,7 @@ import pandas as pd
 import pandas_ta as ta
 from backtesting import Backtest, Strategy
 
-from signals import (
+from config import (
     EMA_FAST,
     EMA_SLOW,
     RSI_PERIOD,
@@ -38,26 +39,23 @@ from signals import (
     ATR_PERIOD,
     ATR_STOP_MULT,
     ATR_TP_MULT,
+    VOTING_THRESHOLD,
+    COMMISSION,
+    POSITION_SIZE,
+    INITIAL_CAPITAL,
+    SYMBOLS,
+    TIMEFRAME,
+    START_DATE,
+    END_DATE,
+)
+
+from signals import (
     signal_a_trend,
     signal_b_mean_reversion,
     signal_c_volume_breakout,
     voting_system,
     calculate_risk,
 )
-
-# =============================================================================
-# Configuration
-# =============================================================================
-
-SYMBOLS = ["BTC/USDT", "ETH/USDT"]
-TIMEFRAME = "1h"
-START_DATE = "2024-01-01"
-END_DATE = "2025-12-31"
-INITIAL_CAPITAL = 500_000  # Simulated USD (high enough to trade BTC with margin)
-# Combined: 0.04% taker fee + 0.05% slippage = 0.09% total per-trade cost.
-# backtesting.py has no built-in slippage param, so we fold it into commission.
-COMMISSION = 0.0009  # 0.09% (0.04% fee + 0.05% slippage)
-POSITION_SIZE = 0.5  # Use 50% of equity per trade to maintain margin buffer
 
 # =============================================================================
 # Logging Setup
@@ -210,8 +208,13 @@ def _prepare_for_backtest(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =============================================================================
-# Backtesting Strategy Class
+# Strategy parameter injection
 # =============================================================================
+
+# backtesting.py instantiates Strategy(broker, data) with exactly 2 positional
+# args, so we cannot pass ``params`` through the constructor directly.
+# Instead, the Strategy reads this module-level variable in __init__.
+_CURRENT_PARAMS: Optional[dict] = None
 
 
 class CryptoStrategy(Strategy):
@@ -219,13 +222,54 @@ class CryptoStrategy(Strategy):
 
     Uses backtesting.py's built-in stop-loss / take-profit (absolute price
     levels) and handles commission + slippage automatically.
+
+    Parameters can be overridden via the ``params`` dict passed to the
+    constructor, enabling optimization without monkey-patching globals.
     """
 
+    # ── instance defaults (set in __init__) ─────────────────────────────
+    ema_fast: int
+    ema_slow: int
+    rsi_period: int
+    zscore_period: int
+    zscore_threshold: float
+    bb_period: int
+    bb_std: float
+    volume_period: int
+    volume_multiplier: float
+    atr_period: int
+    atr_stop_mult: float
+    atr_tp_mult: float
+    voting_threshold: int
+
+    def __init__(self, broker, data, params: Optional[dict] = None) -> None:  # noqa: D107
+        super().__init__(broker, data, params)
+
+        # Read from module-level _CURRENT_PARAMS if set (used by optimize.py),
+        # otherwise fall back to the explicit ``params`` arg (unused by backtesting.py)
+        # or config.py defaults.
+        p = _CURRENT_PARAMS or params or {}
+        self.ema_fast = p.get("ema_fast", EMA_FAST)
+        self.ema_slow = p.get("ema_slow", EMA_SLOW)
+        self.rsi_period = p.get("rsi_period", RSI_PERIOD)
+        self.zscore_period = p.get("zscore_period", ZSCORE_PERIOD)
+        self.zscore_threshold = p.get("zscore_threshold", ZSCORE_THRESHOLD)
+        self.bb_period = p.get("bb_period", BB_PERIOD)
+        self.bb_std = p.get("bb_std", BB_STD)
+        self.volume_period = p.get("volume_period", VOLUME_PERIOD)
+        self.volume_multiplier = p.get("volume_multiplier", VOLUME_MULTIPLIER)
+        self.atr_period = p.get("atr_period", ATR_PERIOD)
+        self.atr_stop_mult = p.get("atr_stop_mult", ATR_STOP_MULT)
+        self.atr_tp_mult = p.get("atr_tp_mult", ATR_TP_MULT)
+        self.voting_threshold = p.get("voting_threshold", VOTING_THRESHOLD)
+
     def init(self):  # noqa: D102
-        # backtesting.py's self.I() passes numpy arrays to indicator functions,
-        # but pandas_ta expects pandas Series.  Every wrapper below converts
-        # the numpy array(s) to Series before calling the pandas_ta function and
-        # returns a numpy array of the same length.
+        # backtesting.py's self.I() passes numpy arrays to indicator
+        # functions, but pandas_ta expects pandas Series.  Every wrapper
+        # below converts the numpy array(s) to Series before calling the
+        # pandas_ta function and returns a numpy array of the same length.
+        # All indicator periods come from instance attributes so that they
+        # reflect any parameter overrides.
 
         # ── helpers ──────────────────────────────────────────────────────
         def _ema(arr: np.ndarray, length: int) -> np.ndarray:
@@ -250,40 +294,43 @@ class CryptoStrategy(Strategy):
                 length=length,
             ).to_numpy()
 
-        def _zscore(arr: np.ndarray, length: int = ZSCORE_PERIOD) -> np.ndarray:
+        def _zscore(arr: np.ndarray, length: int) -> np.ndarray:
             s = pd.Series(arr)
             sma = ta.sma(s, length=length)
             std = ta.stdev(s, length=length)
             std = std.replace(0, np.nan)
             return ((s - sma) / std).to_numpy()
 
-        def _bbu(arr: np.ndarray, length: int = BB_PERIOD, std: float = BB_STD) -> np.ndarray:
+        def _bbu(arr: np.ndarray, length: int, std: float) -> np.ndarray:
             bb = ta.bbands(pd.Series(arr), length=length, std=std)
-            # pandas_ta column names vary by version; look up by prefix.
             col = next(c for c in bb.columns if c.startswith("BBU_"))
             return bb[col].to_numpy()
 
-        def _bbl(arr: np.ndarray, length: int = BB_PERIOD, std: float = BB_STD) -> np.ndarray:
+        def _bbl(arr: np.ndarray, length: int, std: float) -> np.ndarray:
             bb = ta.bbands(pd.Series(arr), length=length, std=std)
             col = next(c for c in bb.columns if c.startswith("BBL_"))
             return bb[col].to_numpy()
 
         # ── register indicators ─────────────────────────────────────────
-        self.ema9 = self.I(_ema, self.data.Close, length=EMA_FAST)
-        self.ema21 = self.I(_ema, self.data.Close, length=EMA_SLOW)
-        self.rsi = self.I(_rsi, self.data.Close, length=RSI_PERIOD)
-        self.zscore = self.I(_zscore, self.data.Close, length=ZSCORE_PERIOD)
-        self.bb_upper = self.I(_bbu, self.data.Close, length=BB_PERIOD, std=BB_STD)
-        self.bb_lower = self.I(_bbl, self.data.Close, length=BB_PERIOD, std=BB_STD)
-        self.vol_sma = self.I(_sma, self.data.Volume, length=VOLUME_PERIOD)
-        self.atr = self.I(
-            _atr, self.data.High, self.data.Low, self.data.Close, length=ATR_PERIOD
-        )
+        self.ema9 = self.I(_ema, self.data.Close, length=self.ema_fast)
+        self.ema21 = self.I(_ema, self.data.Close, length=self.ema_slow)
+        self.rsi = self.I(_rsi, self.data.Close, length=self.rsi_period)
+        self.zscore = self.I(_zscore, self.data.Close,
+                             length=self.zscore_period)
+        self.bb_upper = self.I(_bbu, self.data.Close,
+                               length=self.bb_period, std=self.bb_std)
+        self.bb_lower = self.I(_bbl, self.data.Close,
+                               length=self.bb_period, std=self.bb_std)
+        self.vol_sma = self.I(_sma, self.data.Volume,
+                              length=self.volume_period)
+        self.atr = self.I(_atr, self.data.High, self.data.Low,
+                          self.data.Close, length=self.atr_period)
 
     def next(self):  # noqa: D102
         # Ensure enough bars have passed for all indicators to warm up
         min_bars = max(
-            EMA_SLOW, ATR_PERIOD, ZSCORE_PERIOD, BB_PERIOD, VOLUME_PERIOD
+            self.ema_slow, self.atr_period, self.zscore_period,
+            self.bb_period, self.volume_period,
         )
         if len(self.data.Close) < min_bars + 2:
             return
@@ -339,65 +386,107 @@ class CryptoStrategy(Strategy):
 
 
 # =============================================================================
-# Backtest Runner
+# Backtest Runner (importable by optimize.py)
 # =============================================================================
 
 
-def run_backtest(symbol: str, df: pd.DataFrame) -> dict:
+def run_backtest(
+    symbol: str,
+    df: pd.DataFrame,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    params: Optional[dict] = None,
+) -> dict:
     """Run the strategy backtest on a single symbol.
 
     Args:
         symbol: Trading pair name (for display only).
-        df: Prepared DataFrame with DatetimeIndex and OHLCV columns.
+        df: Full OHLCV DataFrame with DatetimeIndex and capitalized columns.
+        start_date: Subset start ('YYYY-MM-DD').  If None, uses first date.
+        end_date: Subset end ('YYYY-MM-DD').  If None, uses last date.
+        params: Dict of strategy parameter overrides.  If None, uses
+                config.py defaults (via CryptoStrategy defaults).
 
     Returns:
-        Dictionary of backtest statistics.
+        Dictionary of backtest statistics with keys:
+        profit_factor, win_rate, total_trades, sharpe_ratio,
+        max_drawdown, return_pct, final_equity,
+        and raw ``_trades`` DataFrame.
     """
-    logger.info("Running backtest for %s (%d candles) ...", symbol, len(df))
+    # Subset the data
+    sub = df.copy()
+    if start_date is not None:
+        sub = sub.loc[pd.Timestamp(start_date, tz="UTC"):]
+    if end_date is not None:
+        sub = sub.loc[:pd.Timestamp(end_date, tz="UTC")]
+
+    if len(sub) < 500:
+        logger.warning(
+            "%s: only %d candles after date filter — backtest may be unreliable.",
+            symbol, len(sub),
+        )
+
+    logger.info("Running backtest for %s (%d candles) ...", symbol, len(sub))
 
     bt = Backtest(
-        df,
+        sub,
         CryptoStrategy,
         cash=INITIAL_CAPITAL,
         commission=COMMISSION,
         exclusive_orders=True,
         finalize_trades=True,
     )
+    # Inject params via module-level variable (backtesting.py only passes
+    # broker/data to the constructor, so we cannot pass params directly).
+    global _CURRENT_PARAMS
+    _CURRENT_PARAMS = params
+    try:
+        stats = bt.run()
+    finally:
+        _CURRENT_PARAMS = None
 
-    stats = bt.run()
+    # Extract the standard metrics we return
+    return {
+        "profit_factor": float(stats["Profit Factor"]),
+        "win_rate": float(stats["Win Rate [%]"]),
+        "total_trades": int(stats["# Trades"]),
+        "sharpe_ratio": float(stats["Sharpe Ratio"]),
+        "max_drawdown": float(stats["Max. Drawdown [%]"]),
+        "return_pct": float(stats["Return [%]"]),
+        "final_equity": float(stats["Equity Final [$]"]),
+        "_trades": stats["_trades"],
+    }
 
-    # Print results
+
+# =============================================================================
+# Pretty-printer (used by CLI)
+# =============================================================================
+
+
+def _print_results(symbol: str, stats: dict) -> None:
+    """Print backtest results to stdout."""
+    sub_start = START_DATE
+    sub_end = END_DATE
     print(f"\n{'='*60}")
     print(f"  Backtest Results: {symbol}")
     print(f"{'='*60}")
-    print(f"  Period:            {START_DATE} -> {END_DATE}")
+    print(f"  Period:            {sub_start} -> {sub_end}")
     print(f"  Timeframe:         {TIMEFRAME}")
     print(f"  Starting Capital:  ${INITIAL_CAPITAL:,.2f}")
     print(f"  Commission+Slippage:{COMMISSION*100:.2f}%")
     print(f"{'-'*60}")
-    print(f"  Total Trades:      {stats['# Trades']}")
-    print(f"  Win Rate:          {stats['Win Rate [%]']:.2f}%")
-    print(f"  Profit Factor:     {stats['Profit Factor']:.2f}")
-    print(f"  Max Drawdown:      {stats['Max. Drawdown [%]']:.2f}%")
-    print(f"  Sharpe Ratio:      {stats['Sharpe Ratio']:.2f}")
-    print(f"  Final Equity:      ${stats['Equity Final [$]']:,.2f}")
-    print(f"  Return:            {stats['Return [%]']:.2f}%")
-    print(f"  Buy & Hold Return: {stats['Buy & Hold Return [%]']:.2f}%")
+    print(f"  Total Trades:      {stats['total_trades']}")
+    print(f"  Win Rate:          {stats['win_rate']:.2f}%")
+    print(f"  Profit Factor:     {stats['profit_factor']:.2f}")
+    print(f"  Max Drawdown:      {stats['max_drawdown']:.2f}%")
+    print(f"  Sharpe Ratio:      {stats['sharpe_ratio']:.2f}")
+    print(f"  Final Equity:      ${stats['final_equity']:,.2f}")
+    print(f"  Return:            {stats['return_pct']:.2f}%")
     print(f"{'='*60}\n")
-
-    # Save trade log CSV
-    trades = stats["_trades"]
-    if len(trades) > 0:
-        safe_name = symbol.replace("/", "_").lower()
-        trades_path = Path("data") / f"{safe_name}_trades.csv"
-        trades.to_csv(trades_path)
-        logger.info("Trade log saved to %s (%d trades)", trades_path, len(trades))
-
-    return stats
 
 
 # =============================================================================
-# CLI Entry Point
+# CLI Entry Point  (backward-compatible: python backtest.py [--symbol X])
 # =============================================================================
 
 
@@ -423,22 +512,23 @@ def main() -> None:
     logger.info("=== Crypto Trading Bot Backtest ===")
     logger.info(
         "Symbols: %s | Period: %s -> %s | Timeframe: %s",
-        symbols_to_test,
-        START_DATE,
-        END_DATE,
-        TIMEFRAME,
+        symbols_to_test, START_DATE, END_DATE, TIMEFRAME,
     )
 
     for symbol in symbols_to_test:
         try:
             df = load_or_fetch_data(symbol, redownload=args.redownload)
-            if len(df) < 500:
-                logger.warning(
-                    "%s: only %d candles — backtest may be unreliable.",
-                    symbol,
-                    len(df),
-                )
-            run_backtest(symbol, df)
+            stats = run_backtest(symbol, df)
+            _print_results(symbol, stats)
+
+            # Save trade log CSV
+            trades = stats["_trades"]
+            if len(trades) > 0:
+                safe_name = symbol.replace("/", "_").lower()
+                trades_path = Path("data") / f"{safe_name}_trades.csv"
+                trades.to_csv(trades_path)
+                logger.info("Trade log saved to %s (%d trades)",
+                            trades_path, len(trades))
         except Exception as e:
             logger.error("Failed to backtest %s: %s", symbol, e, exc_info=True)
 

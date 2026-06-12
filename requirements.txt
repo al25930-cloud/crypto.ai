@@ -5,3 +5,5 @@ pandas_ta
 backtesting
 requests
 python-dotenv
+optuna
+joblib

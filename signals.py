@@ -2,30 +2,38 @@
 Shared signal computation and voting logic for the Crypto Trading Bot.
 
 This module contains all indicator computation, signal generation (A, B, C),
-the voting system, and ATR-based risk management. It is imported by both
+the voting system, and ATR-based risk management.  It is imported by both
 backtest.py and live_signal.py to avoid code duplication.
+
+All tunable constants are imported from config.py — the single source of truth.
 """
 
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
 
-# =============================================================================
-# Strategy Constants
-# =============================================================================
-
-EMA_FAST = 9
-EMA_SLOW = 21
-RSI_PERIOD = 14
-ZSCORE_PERIOD = 20
-ZSCORE_THRESHOLD = 2.0
-BB_PERIOD = 20
-BB_STD = 2.0
-VOLUME_PERIOD = 20
-VOLUME_MULTIPLIER = 1.5
-ATR_PERIOD = 14
-ATR_STOP_MULT = 1.5
-ATR_TP_MULT = 2.5
+from config import (
+    EMA_FAST,
+    EMA_SLOW,
+    RSI_PERIOD,
+    ZSCORE_PERIOD,
+    ZSCORE_THRESHOLD,
+    BB_PERIOD,
+    BB_STD,
+    VOLUME_PERIOD,
+    VOLUME_MULTIPLIER,
+    ATR_PERIOD,
+    ATR_STOP_MULT,
+    ATR_TP_MULT,
+    VOTING_THRESHOLD,
+    ema_fast_col,
+    ema_slow_col,
+    rsi_col,
+    sma_col,
+    stdev_col,
+    atr_col,
+    vol_sma_col,
+)
 
 # =============================================================================
 # Indicator Computation
@@ -39,41 +47,41 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df: DataFrame with columns: open, high, low, close, volume.
 
     Returns:
-        DataFrame with indicator columns appended. NaN values appear during
-        the warm-up period for each indicator.
+        DataFrame with indicator columns appended.  NaN values appear during
+        the warm-up period for each indicator.  Column names are derived from
+        config.py constants (e.g. EMA_9, EMA_21) so they stay in sync.
     """
     df = df.copy()
 
     # --- EMA (Trend) ---
-    df["EMA_9"] = ta.ema(df["close"], length=EMA_FAST)
-    df["EMA_21"] = ta.ema(df["close"], length=EMA_SLOW)
+    df[ema_fast_col()] = ta.ema(df["close"], length=EMA_FAST)
+    df[ema_slow_col()] = ta.ema(df["close"], length=EMA_SLOW)
 
     # --- RSI ---
-    df["RSI_14"] = ta.rsi(df["close"], length=RSI_PERIOD)
+    df[rsi_col()] = ta.rsi(df["close"], length=RSI_PERIOD)
 
     # --- Z-Score (Mean Reversion) ---
-    df["SMA_20"] = ta.sma(df["close"], length=ZSCORE_PERIOD)
-    df["STDEV_20"] = ta.stdev(df["close"], length=ZSCORE_PERIOD)
-    df["Z_SCORE"] = (df["close"] - df["SMA_20"]) / df["STDEV_20"].replace(0, np.nan)
+    df[sma_col()] = ta.sma(df["close"], length=ZSCORE_PERIOD)
+    df[stdev_col()] = ta.stdev(df["close"], length=ZSCORE_PERIOD)
+    df["Z_SCORE"] = (
+        (df["close"] - df[sma_col()]) / df[stdev_col()].replace(0, np.nan)
+    )
 
     # --- Bollinger Bands ---
     bb = ta.bbands(df["close"], length=BB_PERIOD, std=BB_STD)
     # pandas_ta column names vary by version; look up by prefix.
-    df["BB_UPPER"] = next(c for c in bb.columns if c.startswith("BBU_"))
-    df["BB_LOWER"] = next(c for c in bb.columns if c.startswith("BBL_"))
-    df["BB_MIDDLE"] = next(c for c in bb.columns if c.startswith("BBM_"))
-    # Copy the actual values into the DataFrame.
-    df["BB_UPPER"] = bb[df["BB_UPPER"]]
-    df["BB_LOWER"] = bb[df["BB_LOWER"]]
-    df["BB_MIDDLE"] = bb[df["BB_MIDDLE"]]
+    bbu_col = next(c for c in bb.columns if c.startswith("BBU_"))
+    bbl_col = next(c for c in bb.columns if c.startswith("BBL_"))
+    bbm_col = next(c for c in bb.columns if c.startswith("BBM_"))
+    df["BB_UPPER"] = bb[bbu_col]
+    df["BB_LOWER"] = bb[bbl_col]
+    df["BB_MIDDLE"] = bb[bbm_col]
 
     # --- Volume SMA ---
-    df["VOLUME_SMA_20"] = ta.sma(df["volume"], length=VOLUME_PERIOD)
+    df[vol_sma_col()] = ta.sma(df["volume"], length=VOLUME_PERIOD)
 
     # --- ATR ---
-    df["ATR_14"] = ta.atr(
-        df["high"], df["low"], df["close"], length=ATR_PERIOD
-    )
+    df[atr_col()] = ta.atr(df["high"], df["low"], df["close"], length=ATR_PERIOD)
 
     return df
 
@@ -92,8 +100,8 @@ def signal_a_trend(
 ) -> int:
     """Signal A: Trend Following (EMA crossover + RSI filter).
 
-    LONG:  EMA(9) crosses ABOVE EMA(21) and RSI(14) > 50.
-    SHORT: EMA(9) crosses BELOW EMA(21) and RSI(14) < 50.
+    LONG:  EMA(fast) crosses ABOVE EMA(slow) and RSI > 50.
+    SHORT: EMA(fast) crosses BELOW EMA(slow) and RSI < 50.
     Neutral otherwise.
 
     Returns:
@@ -115,8 +123,8 @@ def signal_a_trend(
 def signal_b_mean_reversion(z_score: float) -> int:
     """Signal B: Mean Reversion (Z-Score).
 
-    LONG:  Z-Score < -2.0 (price too low, expect bounce up).
-    SHORT: Z-Score > +2.0 (price too high, expect drop down).
+    LONG:  Z-Score < -threshold (price too low, expect bounce up).
+    SHORT: Z-Score > +threshold (price too high, expect drop down).
     Neutral otherwise.
 
     Returns:
@@ -141,8 +149,8 @@ def signal_c_volume_breakout(
 ) -> int:
     """Signal C: Volume Breakout (Volume + Bollinger Bands).
 
-    LONG:  Volume > 1.5x average AND price > upper Bollinger band.
-    SHORT: Volume > 1.5x average AND price < lower Bollinger band.
+    LONG:  Volume > multiplier×average AND price > upper Bollinger band.
+    SHORT: Volume > multiplier×average AND price < lower Bollinger band.
     Neutral otherwise.
 
     Returns:
@@ -173,18 +181,18 @@ def voting_system(
     """Combine three signals via majority voting.
 
     Each signal contributes +1 (LONG), -1 (SHORT), or 0 (neutral).
-    Total >= +1  ->  LONG
-    Total <= -1  ->  SHORT
-    Otherwise    ->  HOLD
+    Total >=  VOTING_THRESHOLD  ->  LONG
+    Total <= -VOTING_THRESHOLD  ->  SHORT
+    Otherwise                   ->  HOLD
 
     Returns:
         Tuple of (action: 'LONG' | 'SHORT' | 'HOLD', total_score: int).
     """
     total = sig_a + sig_b + sig_c
 
-    if total >= 1:
+    if total >= VOTING_THRESHOLD:
         return ("LONG", total)
-    elif total <= -1:
+    elif total <= -VOTING_THRESHOLD:
         return ("SHORT", total)
     return ("HOLD", total)
 
@@ -200,16 +208,16 @@ def calculate_risk(
     """Calculate stop loss and take profit levels based on ATR.
 
     LONG:
-        SL = entry_price - (1.5 × ATR)
-        TP = entry_price + (2.5 × ATR)
+        SL = entry_price - (ATR_STOP_MULT × ATR)
+        TP = entry_price + (ATR_TP_MULT × ATR)
 
     SHORT:
-        SL = entry_price + (1.5 × ATR)
-        TP = entry_price - (2.5 × ATR)
+        SL = entry_price + (ATR_STOP_MULT × ATR)
+        TP = entry_price - (ATR_TP_MULT × ATR)
 
     Args:
         entry_price: Current close price (entry).
-        atr: ATR(14) value at entry.
+        atr: ATR value at entry.
         action: 'LONG' or 'SHORT'.
 
     Returns:
