@@ -166,10 +166,10 @@ def run_optimization(
         params = {
             "ema_fast": trial.suggest_categorical("ema_fast", [5, 9, 12]),
             "ema_slow": trial.suggest_categorical("ema_slow", [20, 21, 26]),
-            "zscore_threshold": 2.5,         # fixed — Step 2 robust default
-            "volume_multiplier": 2.0,         # fixed — Step 2 robust default
-            "atr_stop_mult": trial.suggest_categorical("atr_stop_mult", [1.5, 2.0, 2.5]),
-            "atr_tp_mult": trial.suggest_categorical("atr_tp_mult", [2.5, 3.0, 4.0]),
+            "zscore_threshold": trial.suggest_categorical("zscore_threshold", [2.0, 2.5, 3.0]),
+            "volume_multiplier": trial.suggest_categorical("volume_multiplier", [2.0, 2.5, 3.0]),
+            "atr_stop_mult": trial.suggest_categorical("atr_stop_mult", [1.5, 2.0]),
+            "atr_tp_mult": trial.suggest_categorical("atr_tp_mult", [3.5, 4.0]),
         }
 
         # Constraints
@@ -329,10 +329,10 @@ def run_fallback(
         params = {
             "ema_fast": trial.suggest_categorical("ema_fast", [5, 9, 12]),
             "ema_slow": trial.suggest_categorical("ema_slow", [20, 21, 26]),
-            "zscore_threshold": 2.0,          # fixed fallback
-            "volume_multiplier": 2.0,         # fixed fallback
-            "atr_stop_mult": trial.suggest_categorical("atr_stop_mult", [1.5, 2.0, 2.5]),
-            "atr_tp_mult": 3.0,               # fixed fallback
+            "zscore_threshold": 2.0,           # fixed fallback
+            "volume_multiplier": 2.0,          # fixed fallback
+            "atr_stop_mult": trial.suggest_categorical("atr_stop_mult", [1.5, 2.0]),
+            "atr_tp_mult": 3.5,                # fixed fallback
         }
         if params["ema_slow"] <= params["ema_fast"]:
             return 0.0

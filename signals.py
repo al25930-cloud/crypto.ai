@@ -28,6 +28,8 @@ from config import (
     ADX_PERIOD,
     ADX_TREND_THRESHOLD,
     ADX_RANGE_THRESHOLD,
+    LONG_THRESHOLD,
+    SHORT_THRESHOLD,
     ema_fast_col,
     ema_slow_col,
     rsi_col,
@@ -180,58 +182,47 @@ def signal_c_volume_breakout(
 
 
 # =============================================================================
-# Market Regime Filter (ADX-based)
+# Weighted Voting (ADX-based soft weighting)
 # =============================================================================
 
 
-def apply_market_regime(
+def weighted_voting(
     sig_a: int, sig_b: int, sig_c: int, adx: float
-) -> tuple[int, int, int]:
-    """Suppress disfavored signals based on ADX market regime.
+) -> tuple[str, float]:
+    """Combine three signals with ADX‑based weighting and a sum threshold.
 
-    Trending (ADX > 25):  suppress Signal B (mean‑reversion) — trend rules.
-    Ranging  (ADX < 20):  suppress Signal A (trend) — reversals dominate.
-    Neutral  (20‑25):     all signals pass through unchanged.
+    Weights (all signals stay active — no hard suppression):
+      Trending (ADX > 25):  trend=1.0  meanrev=0.5  volume=1.0
+      Ranging  (ADX < 20):  trend=0.5  meanrev=1.0  volume=1.0
+      Neutral  (20‑25):     trend=0.75 meanrev=0.75 volume=1.0
 
-    Signal C (volume breakout) is always active — it works in any regime.
-    """
-    if pd.isna(adx):
-        return sig_a, sig_b, sig_c
-
-    if adx > ADX_TREND_THRESHOLD:
-        return sig_a, 0, sig_c        # suppress mean‑reversion
-    elif adx < ADX_RANGE_THRESHOLD:
-        return 0, sig_b, sig_c        # suppress trend
-    return sig_a, sig_b, sig_c
-
-
-# =============================================================================
-# Voting System
-# =============================================================================
-
-
-def voting_system(
-    sig_a: int, sig_b: int, sig_c: int
-) -> tuple[str, int]:
-    """Combine three signals via strict majority voting (2 of 3 required).
-
-    Each signal contributes +1 (LONG), -1 (SHORT), or 0 (neutral).
-    At least TWO signals must agree on the same direction:
-      2+ LONG votes  ->  LONG
-      2+ SHORT votes ->  SHORT
-      Otherwise      ->  HOLD
+    Weighted sum = sig_a*w_a + sig_b*w_b + sig_c*w_c
+      sum >=  LONG_THRESHOLD  ->  LONG  (stricter — needs stronger consensus)
+      sum <= -SHORT_THRESHOLD ->  SHORT (easier — shorter exit/entry)
+      otherwise               ->  HOLD
 
     Returns:
-        Tuple of (action: 'LONG' | 'SHORT' | 'HOLD', total_score: int).
+        Tuple of (action: 'LONG'|'SHORT'|'HOLD', weighted_sum: float).
     """
-    long_votes = int(sig_a == 1) + int(sig_b == 1) + int(sig_c == 1)
-    short_votes = int(sig_a == -1) + int(sig_b == -1) + int(sig_c == -1)
+    # Determine regime weights
+    if pd.isna(adx):
+        wa, wb = 0.75, 0.75
+    elif adx > ADX_TREND_THRESHOLD:
+        wa, wb = 1.0, 0.5
+    elif adx < ADX_RANGE_THRESHOLD:
+        wa, wb = 0.5, 1.0
+    else:
+        wa, wb = 0.75, 0.75
 
-    if long_votes >= 2:
-        return ("LONG", long_votes)
-    elif short_votes >= 2:
-        return ("SHORT", -short_votes)
-    return ("HOLD", 0)
+    wc = 1.0  # volume is always full weight
+
+    weighted_sum = sig_a * wa + sig_b * wb + sig_c * wc
+
+    if weighted_sum >= LONG_THRESHOLD:
+        return ("LONG", weighted_sum)
+    elif weighted_sum <= -SHORT_THRESHOLD:
+        return ("SHORT", weighted_sum)
+    return ("HOLD", weighted_sum)
 
 
 # =============================================================================

@@ -13,7 +13,8 @@ overwrite them via Phase 5).
 # Strategy Parameters (tunable via optimization)
 # =============================================================================
 
-VOTING_THRESHOLD = 2       # deprecated — voting_system now uses strict 2-of-3 majority
+LONG_THRESHOLD = 2.0    # weighted sum >= this -> LONG (stricter buy)
+SHORT_THRESHOLD = 1.0   # weighted sum <= -this -> SHORT (easier sell)
 
 # Signal A – Trend Following
 EMA_FAST = 9
@@ -33,7 +34,7 @@ VOLUME_MULTIPLIER = 2.0       # 2.0× average volume (was 1.5) — higher bar fo
 # Risk Management
 ATR_PERIOD = 14
 ATR_STOP_MULT = 1.5
-ATR_TP_MULT = 2.5
+ATR_TP_MULT = 4.0              # R:R = 4.0/1.5 = 2.67:1 (breakeven ~27% win rate)
 
 # Market Regime Filter (ADX)
 ADX_PERIOD = 14

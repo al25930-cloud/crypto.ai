@@ -55,9 +55,8 @@ from signals import (
     signal_a_trend,
     signal_b_mean_reversion,
     signal_c_volume_breakout,
-    voting_system,
+    weighted_voting,
     calculate_risk,
-    apply_market_regime,
 )
 
 # =============================================================================
@@ -391,10 +390,8 @@ class CryptoStrategy(Strategy):
             close, vol, vol_sma, bb_upper, bb_lower
         )
 
-        # Apply market regime filter (ADX-based)
-        sig_a, sig_b, sig_c = apply_market_regime(sig_a, sig_b, sig_c, adx)
-
-        action, _total = voting_system(sig_a, sig_b, sig_c)
+        # Weighted voting with ADX-based soft regime weights
+        action, _total = weighted_voting(sig_a, sig_b, sig_c, adx)
 
         # Enter trades
         if action == "LONG" and not self.position.is_long:
@@ -538,7 +535,14 @@ def main() -> None:
     for symbol in symbols_to_test:
         try:
             df = load_or_fetch_data(symbol, redownload=args.redownload)
-            stats = run_backtest(symbol, df)
+
+            # ETH/USDT uses its own parameter overrides
+            params = None
+            if symbol == "ETH/USDT":
+                from config_eth import ETH_PARAMS
+                params = ETH_PARAMS
+
+            stats = run_backtest(symbol, df, params=params)
             _print_results(symbol, stats)
 
             # Save trade log CSV

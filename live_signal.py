@@ -38,9 +38,8 @@ from signals import (
     signal_a_trend,
     signal_b_mean_reversion,
     signal_c_volume_breakout,
-    voting_system,
+    weighted_voting,
     calculate_risk,
-    apply_market_regime,
 )
 
 # =============================================================================
@@ -228,11 +227,9 @@ def evaluate_signal(df: pd.DataFrame) -> dict:
         last["BB_LOWER"],
     )
 
-    # Apply market regime filter
+    # Weighted voting with ADX-based soft regime weights
     adx_val = float(last[adx_col()]) if adx_col() in last.index else 25.0
-    sig_a, sig_b, sig_c = apply_market_regime(sig_a, sig_b, sig_c, adx_val)
-
-    action, total_score = voting_system(sig_a, sig_b, sig_c)
+    action, total_score = weighted_voting(sig_a, sig_b, sig_c, adx_val)
 
     result: dict = {
         "action": action,
