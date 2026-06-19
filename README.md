@@ -41,19 +41,54 @@ This installs: ccxt, pandas, numpy, requests, python-dotenv, deap, optuna, panda
 
 TA-Lib is a C-based indicator library that makes backtesting **significantly faster**. If it's not installed, the system falls back to pandas_ta (slower but works everywhere).
 
-**Windows:**
-1. Download the `.whl` file from [https://github.com/cgohlke/talib-build/releases](https://github.com/cgohlke/talib-build/releases)
-2. Install it: `pip install TA_Lib‑0.4.28‑cp311‑cp311‑win_amd64.whl` (pick your Python version)
+> **You can skip this entirely.** The system works perfectly fine without TA-Lib — it will just use pandas_ta automatically. TA-Lib is only recommended if you plan to run long training sessions (30+ minutes) and want faster backtesting.
 
-**Mac/Linux:**
+#### Option 1: Prebuilt wheel (Windows — easiest)
+
+1. Download the `.whl` file that matches your Python version from [https://github.com/cgohlke/talib-build/releases](https://github.com/cgohlke/talib-build/releases)
+   - Check your Python version: `python --version`
+   - Example: `TA_Lib‑0.4.28‑cp311‑cp311‑win_amd64.whl` is for Python 3.11 on 64-bit Windows
+2. Install it:
+   ```bash
+   pip install TA_Lib‑0.4.28‑cp311‑cp311‑win_amd64.whl
+   ```
+
+#### Option 2: Conda (Windows/Mac/Linux)
+
+If you use Anaconda or Miniconda, this is the most reliable method:
 ```bash
-# Install the C library first
-brew install ta-lib          # macOS
-sudo apt install libta-lib0  # Ubuntu/Debian
+conda install -c conda-forge ta-lib
+```
 
-# Then install the Python wrapper
+#### Option 3: Build from source (Mac/Linux)
+
+```bash
+# macOS
+brew install ta-lib
+pip install TA-Lib
+
+# Ubuntu / Debian
+sudo apt install libta-lib0 libta-lib-dev
+pip install TA-Lib
+
+# Fedora / RHEL
+sudo dnf install ta-lib-devel
 pip install TA-Lib
 ```
+
+#### Common pitfalls
+
+- **`ta-lib-everywhere` on PyPI is deprecated** — it's a dummy package that just redirects to the official `TA-Lib` and does NOT bundle the C library. Don't use it.
+- **Missing C headers on Linux** — make sure you install the `-dev` package (e.g., `libta-lib-dev`), not just `libta-lib0`.
+- **Python version mismatch** — the `.whl` filename must match your Python version (cp39 = 3.9, cp310 = 3.10, cp311 = 3.11, cp312 = 3.12).
+
+#### Verifying TA-Lib is installed
+
+```bash
+python -c "import talib; print(f'TA-Lib version: {talib.__version__}')"
+```
+
+If this prints the version number, TA-Lib is working. If you get an import error, the system will automatically fall back to pandas_ta.
 
 If TA-Lib fails to install, don't worry — the system will use pandas_ta automatically. You'll see this message at startup:
 ```
