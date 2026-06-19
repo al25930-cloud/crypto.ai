@@ -130,8 +130,8 @@ def _log_report(stats: dict, global_rr: float, total_strategies: int, removed: l
     logger.info("")
 
     for level, emoji in [
-        ("CRITICAL", "🔴🔴"), ("ALERT", "🔴"), ("WARNING", "⚠️"),
-        ("STRONG", "⭐"), ("OK", "✅"), ("NO_DATA", "⬜"),
+        ("CRITICAL", "[CRITICAL]"), ("ALERT", "[ALERT]"), ("WARNING", "[WARNING]"),
+        ("STRONG", "[STRONG]"), ("OK", "[OK]"), ("NO_DATA", "[NO DATA]"),
     ]:
         conds = [(k, v) for k, v in stats.items() if v["alert_level"] == level]
         if not conds:

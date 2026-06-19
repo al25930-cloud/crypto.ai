@@ -23,7 +23,7 @@ import pandas as pd
 import config
 from backtest import backtest_strategy, prepare_data
 from conditions import ALL_CONDITIONS
-from data_fetcher import fetch_ohlcv
+from data_fetcher import fetch_ohlcv, get_training_data
 from efficiency import analyze_conditions
 from indicators import compute_all_conditions
 from strategy import (
@@ -108,7 +108,7 @@ class TrainingSession:
     def _load_and_prepare_data(self) -> None:
         """Load historical data, compute all indicators and conditions."""
         logger.info("Loading historical data...")
-        raw_df = fetch_ohlcv(
+        raw_df = get_training_data(
             symbol=self.symbol,
             timeframe=self.timeframe,
             months=config.TRAINING_PERIOD_MONTHS,

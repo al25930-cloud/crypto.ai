@@ -63,6 +63,8 @@ BAYESIAN_STARTUP_TRIALS = 100
 # === Qualification / Disqualification ===
 MIN_TRADES_PER_DAY = 0.5
 MAX_TRADES_PER_DAY = 10
+LOW_TRADES_THRESHOLD = 2.0       # If avg trades/day <= this, apply 50% penalty
+LOW_TRADES_PENALTY = 0.5        # 50% score penalty for low trade frequency
 MIN_WIN_RATE = 0.35  # 35%
 MAX_DRAWDOWN = 0.50  # 50%
 DRAWDOWN_PENALTY_START = 0.15  # 15%

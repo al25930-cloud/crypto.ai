@@ -308,10 +308,15 @@ Press `Ctrl+C`. The bot will save its state and shut down gracefully.
 ### What is the score?
 
 ```
-score = rr_per_day × drawdown_penalty
+score = rr_per_day × low_trades_penalty × drawdown_penalty
 ```
 
-- If max drawdown < 15%: no penalty (score = rr_per_day)
+**Step 1 — Low trade frequency penalty:**
+- If avg trades/day ≤ 2: rr_per_day is multiplied by 0.5 (50% penalty)
+- This filters out strategies that rarely trade, since low sample sizes are unreliable
+
+**Step 2 — Drawdown penalty:**
+- If max drawdown < 15%: no penalty (penalty = 1.0)
 - If max drawdown 15%–50%: linear penalty scaling down to 0
 - If max drawdown > 50%: strategy is disqualified
 
@@ -361,6 +366,8 @@ All parameters are in `config.py`. Here's the complete list:
 | `MAX_DRAWDOWN` | `0.50` | Maximum drawdown (50%) |
 | `MIN_TRADES_PER_DAY` | `0.5` | Minimum trades per day |
 | `MAX_TRADES_PER_DAY` | `10` | Maximum trades per day |
+| `LOW_TRADES_THRESHOLD` | `2.0` | If avg trades/day ≤ this, apply 50% penalty |
+| `LOW_TRADES_PENALTY` | `0.5` | Score multiplier for low-frequency strategies |
 
 ### Trade Rules
 | Parameter | Default | Description |

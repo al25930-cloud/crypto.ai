@@ -79,6 +79,11 @@ def score_strategy(results: dict) -> float:
 
     rr_per_day = results["rr_per_day"]
     max_drawdown = results["max_drawdown"]
+    avg_trades = results["avg_trades_per_day"]
+
+    # Low trade frequency penalty
+    if avg_trades <= config.LOW_TRADES_THRESHOLD:
+        rr_per_day *= config.LOW_TRADES_PENALTY
 
     # Drawdown penalty
     if max_drawdown < config.DRAWDOWN_PENALTY_START:
