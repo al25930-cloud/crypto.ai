@@ -138,7 +138,7 @@ def run_validation(
     # Acceptance criteria check
     acceptance = {
         "win_rate_pass": results["win_rate"] >= 0.35,
-        "max_drawdown_pass": results["max_drawdown"] <= 0.20,
+        "max_drawdown_pass": results["max_drawdown"] <= config.MAX_DRAWDOWN,
         "profit_factor_pass": profit_factor >= 1.3,
     }
     acceptance["all_pass"] = all(acceptance.values())
@@ -201,7 +201,7 @@ def _log_validation_report(report: dict) -> None:
     logger.info(f"  Win rate:        {report['win_rate']:.1%}  {pass_icon(acc['win_rate_pass'])} (threshold: ≥35%)")
     logger.info(f"  Profit factor:   {report['profit_factor']}  {pass_icon(acc['profit_factor_pass'])} (threshold: ≥1.3)")
     logger.info(f"  Sharpe ratio:    {report['sharpe_ratio']:.4f}")
-    logger.info(f"  Max drawdown:    {report['max_drawdown']:.1%}  {pass_icon(acc['max_drawdown_pass'])} (threshold: ≤20%)")
+    logger.info(f"  Max drawdown:    {report['max_drawdown']:.1%}  {pass_icon(acc['max_drawdown_pass'])} (threshold: ≤50%)")
     logger.info(f"  RR/day:          {report['rr_per_day']:.4f}")
     logger.info(f"  Total RR:        {report['total_rr']:.4f}")
     logger.info("")

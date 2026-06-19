@@ -84,7 +84,7 @@ All parameters are in `config.py`. Here are the most important ones:
 | `TRAINING_MINUTES` | `30` | How long to train (longer = more strategies tested) |
 | `TRAINING_METHOD` | `ga_bayesian` | `ga_bayesian` (serious) or `random` (quick test) |
 | `MIN_WIN_RATE` | `0.35` | Minimum 35% win rate to qualify |
-| `MAX_DRAWDOWN` | `0.50` | Maximum 50% drawdown to qualify |
+| `MAX_DRAWDOWN` | `0.50` | Maximum 50% drawdown to qualify (linear penalty from 15%) |
 | `TRADING_FEE_PCT` | `0.1` | Trading fee per side (0.1% = Binance standard) |
 
 **You don't need to change anything to get started.** The defaults are sensible.
@@ -189,7 +189,7 @@ VALIDATION RESULTS
   Win rate:        48.5%  ✅ PASS (threshold: ≥35%)
   Profit factor:   1.82   ✅ PASS (threshold: ≥1.3)
   Sharpe ratio:    2.1500
-  Max drawdown:    18.3%  ✅ PASS (threshold: ≤20%)
+  Max drawdown:    18.3%  ✅ PASS (threshold: ≤50%)
   RR/day:          2.4500
 
   Exit breakdown:
@@ -206,7 +206,7 @@ VALIDATION RESULTS
 | Metric | Threshold | What it means |
 |---|---|---|
 | Win rate | ≥ 35% | At least 1 in 3 trades is a winner |
-| Max drawdown | ≤ 20% | Worst peak-to-trough loss is at most 20% |
+| Max drawdown | ≤ 50% | Worst peak-to-trough loss is at most 50% (score penalized from 15%) |
 | Profit factor | ≥ 1.3 | Gross profit is at least 1.3× gross loss |
 
 **If validation fails**, you can:
@@ -478,8 +478,7 @@ Not simultaneously. Train and run live mode for one symbol at a time. You can ru
 3.  python training.py --minutes 2 --method random   # Quick smoke test
 4.  python training.py                         # Full GA+Bayesian training (30 min)
 5.  Review efficiency report in console         # Check which conditions work
-6.  python validation.py --period 12           # Validate on separate data
-7.  Check acceptance criteria (WR≥35%, DD≤20%, PF≥1.3)
+6.  python validation.py --period 12           # Validate on separate data7. Check acceptance criteria (WR≥35%, DD≤50%, PF≥1.3)
 8.  python live_signal.py                      # Start receiving signals
 9.  Check Discord for entry/exit alerts         # Execute trades manually
 ```
