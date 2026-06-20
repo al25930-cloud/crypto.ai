@@ -36,7 +36,7 @@ SYMBOL = "BTC/USDT"
 
 # === Training ===
 TRAINING_MINUTES = 30
-TRAINING_PERIOD_MONTHS = 6
+TRAINING_PERIOD_MONTHS = 12
 TRAINING_METHOD = "ga_bayesian"  # "random" or "ga_bayesian"
 
 # === Strategy Generation (percentage-based) ===
@@ -48,7 +48,7 @@ MAX_THRESHOLD = 0.7
 MIN_SL = 0.3  # percent
 MAX_SL = 3.0  # percent
 MIN_RR = 1.0
-MAX_RR = 5.0
+MAX_RR = 8.0
 
 # === GA Parameters ===
 GA_POPULATION_SIZE = 200
@@ -64,8 +64,8 @@ BAYESIAN_STARTUP_TRIALS = 100
 # === Qualification / Disqualification ===
 MIN_TRADES_PER_DAY = 0.5
 MAX_TRADES_PER_DAY = 10
-LOW_TRADES_THRESHOLD = 2.0       # If avg trades/day <= this, apply 50% penalty
-LOW_TRADES_PENALTY = 0.5        # 50% score penalty for low trade frequency
+LOW_TRADES_THRESHOLD = 1.5       # If avg trades/day <= this, apply penalty
+LOW_TRADES_PENALTY = 0.7        # 30% score penalty for low trade frequency
 MIN_WIN_RATE = 0.35  # 35%
 MAX_DRAWDOWN = 0.50  # 50%
 DRAWDOWN_PENALTY_START = 0.15  # 15%

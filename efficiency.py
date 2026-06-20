@@ -46,7 +46,22 @@ def analyze_conditions(all_results: list[dict]) -> dict:
     top_10_cutoff = max(1, len(valid) // 10)
     top_10_set = set(id(r) for r in valid[:top_10_cutoff])
 
-    # Global averages
+    # Direction-aware global averages
+    # LONG and SHORT strategies perform differently depending on market regime.
+    # Comparing LONG conditions against a global avg dominated by SHORT strategies
+    # (in a bear market) unfairly penalizes all LONG conditions. Instead, compare
+    # each condition against the average of strategies in the same direction.
+    long_strategies = [r for r in valid if r["strategy"].get("direction") == "LONG"]
+    short_strategies = [r for r in valid if r["strategy"].get("direction") == "SHORT"]
+
+    global_rr_long = (
+        sum(r["results"]["rr_per_day"] for r in long_strategies) / len(long_strategies)
+        if long_strategies else 0.0
+    )
+    global_rr_short = (
+        sum(r["results"]["rr_per_day"] for r in short_strategies) / len(short_strategies)
+        if short_strategies else 0.0
+    )
     global_rr = sum(r["results"]["rr_per_day"] for r in valid) / len(valid)
 
     # Per-condition stats
@@ -82,7 +97,15 @@ def analyze_conditions(all_results: list[dict]) -> dict:
         if used > 0:
             stats["avg_rr_per_day"] = stats["rr_per_day_sum"] / used
             stats["avg_win_rate"] = stats["win_rate_sum"] / used
-            stats["efficiency_score"] = stats["avg_rr_per_day"] / global_rr if global_rr > 0 else 0.0
+            # Direction-aware efficiency: compare against the avg for the same direction
+            direction = get_direction_for_condition(cond_key)
+            if direction == "LONG":
+                ref_rr = global_rr_long if global_rr_long > 0 else global_rr
+            elif direction == "SHORT":
+                ref_rr = global_rr_short if global_rr_short > 0 else global_rr
+            else:
+                ref_rr = global_rr
+            stats["efficiency_score"] = stats["avg_rr_per_day"] / ref_rr if ref_rr > 0 else 0.0
         else:
             stats["avg_rr_per_day"] = 0.0
             stats["avg_win_rate"] = 0.0
@@ -108,10 +131,13 @@ def analyze_conditions(all_results: list[dict]) -> dict:
         del stats["win_rate_sum"]
 
     # Log the report
-    _log_report(condition_stats, global_rr, len(valid), removed_conditions)
+    _log_report(
+        condition_stats, global_rr, len(valid), removed_conditions,
+        global_rr_long, global_rr_short, len(long_strategies), len(short_strategies),
+    )
 
     # Save efficiency report
-    _save_report(condition_stats, len(valid), global_rr)
+    _save_report(condition_stats, len(valid), global_rr, global_rr_long, global_rr_short)
 
     # Auto-remove CRITICAL conditions (with pool size floor safeguard)
     if removed_conditions:
@@ -120,13 +146,19 @@ def analyze_conditions(all_results: list[dict]) -> dict:
     return condition_stats
 
 
-def _log_report(stats: dict, global_rr: float, total_strategies: int, removed: list) -> None:
+def _log_report(
+    stats: dict, global_rr: float, total_strategies: int, removed: list,
+    global_rr_long: float = 0.0, global_rr_short: float = 0.0,
+    num_long: int = 0, num_short: int = 0,
+) -> None:
     """Log the efficiency report."""
     logger.info("=" * 60)
     logger.info("EFFICIENCY REPORT")
     logger.info("=" * 60)
     logger.info(f"Strategies analyzed: {total_strategies}")
     logger.info(f"Global avg RR/day: {global_rr:.4f}")
+    logger.info(f"  LONG avg RR/day: {global_rr_long:.4f} ({num_long} strategies)")
+    logger.info(f"  SHORT avg RR/day: {global_rr_short:.4f} ({num_short} strategies)")
     logger.info("")
 
     for level, emoji in [
@@ -164,13 +196,18 @@ def _log_report(stats: dict, global_rr: float, total_strategies: int, removed: l
     logger.info("=" * 60)
 
 
-def _save_report(stats: dict, total_strategies: int, global_rr: float) -> None:
+def _save_report(
+    stats: dict, total_strategies: int, global_rr: float,
+    global_rr_long: float = 0.0, global_rr_short: float = 0.0,
+) -> None:
     """Save efficiency report to JSON."""
     import datetime as _dt
     report = {
         "timestamp": _dt.datetime.now().isoformat(),
         "strategies_analyzed": total_strategies,
         "global_avg_rr_per_day": global_rr,
+        "global_avg_rr_per_day_long": global_rr_long,
+        "global_avg_rr_per_day_short": global_rr_short,
         "conditions": stats,
     }
     path = config.MODEL_DIR / "condition_efficiency.json"

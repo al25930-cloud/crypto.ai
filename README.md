@@ -146,12 +146,173 @@ python training.py --symbol BTC/USDT
 
 ### What happens during training
 
-1. **Data fetching**: Downloads 6 months of 15-minute candles from Binance (cached to `data/` so subsequent runs are fast)
-2. **Indicator computation**: Calculates all technical indicators (EMA, RSI, MACD, Bollinger Bands, etc.)
-3. **Phase 1 — Genetic Algorithm**: Evolves a population of 200 strategies over 30 generations. Each generation selects the best performers, combines them (crossover), and introduces random changes (mutation).
-4. **Phase 2 — Bayesian Optimization**: Takes the top 10 strategies from GA and refines them using Optuna's Tree-structured Parzen Estimator, testing up to 2,000 additional variations.
-5. **Efficiency analysis**: Analyzes which of the 53 conditions are helping vs. hurting. Conditions with efficiency < 0.3 are automatically removed from future training runs.
-6. **Save results**: Best strategy → `models/best_strategy.json`, top 500 → `models/top_strategies.json`, efficiency report → `models/condition_efficiency.json`
+Training is a two-phase pipeline that tests thousands of strategy combinations to find the one with the highest score. Here's exactly what each stage does:
+
+---
+
+#### Stage 1: Data Preparation
+
+1. **Fetch historical data**: Downloads 6 months of 15-minute candles from Binance (cached to `data/` so subsequent runs are fast)
+2. **Compute indicators**: Calculates all technical indicators (EMA, RSI, MACD, Bollinger Bands, ATR, etc.) for every candle
+3. **Pre-compute conditions**: All 53 conditions (e.g., `rsi_14_lt_30`, `price_gt_sma_200`) are evaluated for every candle and cached in memory. This avoids recomputing them for each strategy, which makes backtesting ~50x faster.
+
+---
+
+#### Stage 2: Phase 1 — Genetic Algorithm (Global Search)
+
+The GA mimics natural selection to explore a huge search space. It takes ~50% of the total training time.
+
+**How it works, step by step:**
+
+1. **Create initial population**: Generate 200 completely random strategies. Each strategy has:
+   - A direction (LONG or SHORT)
+   - 7-27 conditions (randomly chosen from the pool of 31 available conditions per direction)
+   - A threshold (0.5-0.7) — how many conditions must be true to enter a trade
+   - A stop-loss (0.3%-3.0%) — maximum loss per trade
+   - A risk-reward ratio (1.0-5.0) — target profit relative to stop-loss
+
+2. **Evaluate every strategy**: Each strategy is backtested against 6 months of historical data. The backtest simulates: "If I had traded this strategy every time its conditions were met, what would my results be?" Each strategy gets a **score**:
+   ```
+   score = rr_per_day x drawdown_penalty x low_trades_penalty
+   ```
+   - **rr_per_day**: Risk-reward earned per trading day (higher = better)
+   - **drawdown_penalty**: 1.0 if drawdown < 15%, scales linearly to 0 at 50%
+   - **low_trades_penalty**: 0.5 if avg trades/day <= 2, else 1.0
+   - Strategies that fail basic quality checks are **disqualified** (score = -inf):
+     - Win rate < 35%
+     - Max drawdown > 50%
+     - Trade frequency outside 0.5-10 trades/day
+
+3. **Sort by fitness**: Population sorted by score (highest first). The top strategy is the "best" this generation.
+
+4. **Evolve for 30 generations**. Each generation does the following:
+
+   **a) Elitism** — The top 5 strategies survive unchanged into the next generation. This guarantees we never lose our best strategy.
+
+   **b) Tournament Selection** — For the remaining 195 slots, pick 3 random strategies and the one with the highest score wins a spot. Repeat until all 195 slots are filled. This favors high-scoring strategies but doesn't guarantee them — randomness keeps diversity.
+
+   **c) Crossover (80% chance per pair)** — Pairs of parent strategies are combined to create children:
+   ```
+   Parent A: [cond1, cond2, cond3, cond4]     Parent B: [cond5, cond6, cond7, cond8]
+   Child 1:  [cond1, cond2, cond7, cond8]     Child 2:  [cond5, cond6, cond3, cond4]
+   ```
+   The first half of conditions comes from one parent, the second half from the other. Numeric parameters (threshold, SL, RR) are averaged. If a child has duplicate conditions, they are removed and replaced with random ones from the pool.
+
+   **d) Mutation (20% chance per individual)** — Randomly change ONE thing:
+   - Swap a condition for a different one from the pool
+   - Nudge threshold by +/-0.05
+   - Nudge stop-loss by +/-0.2%
+   - Nudge risk-reward by +/-0.5
+
+   **e) Re-evaluate** — Backtest all new children, sort by score, and check for a new all-time best.
+
+5. **After 30 generations**, the GA has tested ~6,000 strategies and converged toward high-scoring regions. The **top 10 strategies** are passed to Phase 2.
+
+---
+
+#### Stage 3: Phase 2 — Bayesian Optimization (Local Refinement)
+
+The GA found promising *regions* of the search space. Now Bayesian optimization does a focused, intelligent search around those regions. It takes the remaining ~50% of training time.
+
+**How it works:**
+
+1. **Seed with GA results**: The top 10 GA strategies are loaded as the first 10 trials. This gives the optimizer a head start — it already knows what good strategies look like.
+
+2. **Random exploration (100 trials)**: The first 100 trials explore randomly to build an initial model of the search space.
+
+3. **Bayesian-guided search (1,900 trials)**: After the startup phase, Optuna's TPE (Tree-structured Parzen Estimator) model kicks in:
+   - It looks at all past trials and their scores
+   - It learns: "Strategies with these kinds of conditions, this threshold range, this SL/RR tend to score higher"
+   - It suggests new trials that are likely to score well
+   - Each trial it learns more, so suggestions get smarter over time
+
+4. **Best strategy found**: After 2,000 total trials, the optimizer returns the highest-scoring strategy it found.
+
+**Why two phases?** The GA is good at exploring a huge space broadly (global search), but it's slow and imprecise. Bayesian optimization is good at refining a narrow region precisely (local search), but it needs good starting points. Combining them gives you both breadth and depth.
+
+---
+
+#### Stage 4: Efficiency Analysis
+
+After all strategies are tested, the system analyzes which of the 53 conditions are helping vs. hurting:
+
+1. For each condition, calculate how often it appears in top-scoring strategies vs. bottom-scoring strategies
+2. Compute an **efficiency score**: how much a condition contributes to winning strategies relative to the average
+3. Conditions with efficiency < 0.3 are flagged for removal
+4. **Pool size safeguard**: The system never removes conditions below 20 per direction (LONG/SHORT), so there are always enough conditions to build strategies
+5. **Temporary removals**: Removed conditions are cleared at the start of each training run. All 53 conditions are re-evaluated with fresh market data
+
+---
+
+#### Stage 5: Save Results
+
+1. **Best strategy** → `models/best_strategy.json` — the single best strategy found
+2. **Top 500 strategies** → `models/top_strategies.json` — the 500 highest-scoring strategies (sorted by score)
+3. **Efficiency report** → `models/condition_efficiency.json` — which conditions helped/hurt
+4. **Removed conditions** → `models/removed_conditions.json` — conditions temporarily excluded
+5. **Training log** → `logs/training_YYYY-MM-DD_HHMMSS.log` — full log of everything that happened
+
+---
+
+#### How the Score Determines Everything
+
+The **score** is the single metric the entire system optimizes for. Every decision — which strategies survive in the GA, which ones the Bayesian optimizer focuses on, which strategy gets saved as "best" — is based on this score.
+
+```
+score = rr_per_day x drawdown_penalty x low_trades_penalty
+```
+
+| Component | What it measures | Value range |
+|---|---|---|
+| **rr_per_day** | Risk-reward earned per trading day | 0 to ~5 (higher = better) |
+| **drawdown_penalty** | Penalizes strategies with high drawdown | 0.0 (50% drawdown) to 1.0 (<15% drawdown) |
+| **low_trades_penalty** | Penalizes strategies that rarely trade | 0.5 (<=2 trades/day) or 1.0 |
+
+**Disqualified strategies** get score = -inf (instantly lose to everything). A strategy is disqualified if:
+- Win rate < 35%
+- Max drawdown > 50%
+- Average trades/day outside 0.5-10
+
+**What [NEW BEST!] means in the logs**: It appears when a single strategy in the current generation scores higher than any strategy seen in all previous generations. It does NOT mean the average population improved — it means a new champion was found.
+
+---
+
+#### What Determines Which Strategies Survive in the GA?
+
+Three mechanisms control what survives from generation to generation:
+
+| Mechanism | What it does | How many survive |
+|---|---|---|
+| **Elitism** | Top N individuals copied unchanged to next generation | 5 (`GA_ELITE_COUNT`) |
+| **Tournament selection** | Random groups of 3 compete, winner becomes a parent | Probabilistic — favors high fitness but doesn't guarantee it |
+| **Score (fitness)** | Higher score = more likely to be selected for reproduction | Higher = better chance |
+
+The key insight: **elitism guarantees the top 5 always survive**, while **tournament selection gives higher-scoring individuals a better chance** (but not certainty) of reproducing. This balance prevents the population from losing diversity while still converging toward better strategies.
+
+#### Pipeline Summary
+
+```
+Training Start
+    |
+    |-- Load 6 months of BTC/USDT data
+    |-- Compute all 53 conditions (pre-cached for speed)
+    |
+    |-- PHASE 1: Genetic Algorithm (~50% of time)
+    |   |-- Gen 0: 200 random strategies
+    |   |-- Gen 1-30: Evolve via selection + crossover + mutation
+    |   |-- ~6,000 strategies tested
+    |   +-- Top 10 passed to Phase 2
+    |
+    |-- PHASE 2: Bayesian Optimization (~50% of time)
+    |   |-- Seed with GA's top 10
+    |   |-- 100 random trials (build initial model)
+    |   |-- 1,900 smart trials (TPE-guided search)
+    |   +-- ~2,000 strategies tested
+    |
+    +-- Save best strategy + top 500 + efficiency report
+```
+
+---
 
 ### What you'll see
 

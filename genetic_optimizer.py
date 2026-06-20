@@ -279,7 +279,7 @@ class GeneticOptimizer:
             gen_best = _fitness_key(population[0])
             gen_avg = self._avg_score(population)
             new_best = False
-            if gen_best > self.best_score:
+            if gen_best > self.best_score + 1e-5:  # epsilon to avoid floating-point false positives
                 self.best_score = gen_best
                 self.best_individual = population[0].copy()
                 new_best = True
