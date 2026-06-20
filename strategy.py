@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 import config
-from conditions import get_condition_pool
+from conditions import get_condition_pool, get_condition_count_range
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,8 @@ def generate_random_strategy(direction: Optional[str] = None) -> dict:
     removed = _load_removed_conditions()
     pool = [c for c in pool if c not in removed]
 
-    num_conditions = random.randint(config.MIN_CONDITIONS, config.MAX_CONDITIONS)
+    min_count, max_count = get_condition_count_range(len(pool))
+    num_conditions = random.randint(min_count, max_count)
     conditions = random.sample(pool, min(num_conditions, len(pool)))
 
     threshold = round(random.uniform(config.MIN_THRESHOLD, config.MAX_THRESHOLD), 4)

@@ -10,6 +10,7 @@ import random as rng
 from typing import Callable, Optional
 
 import config
+from conditions import get_condition_count_range
 from strategy import generate_random_strategy
 
 logger = logging.getLogger(__name__)
@@ -100,11 +101,12 @@ def _mate(ind1: Individual, ind2: Individual) -> tuple[Individual, Individual]:
         pool = get_condition_pool(direction)
         removed = _load_removed()
         pool = [c for c in pool if c not in removed]
-        while len(child_conds) < config.MIN_CONDITIONS:
+        min_count, max_count = get_condition_count_range(len(pool))
+        while len(child_conds) < min_count:
             extra = rng.choice(pool)
             if extra not in child_conds:
                 child_conds.append(extra)
-        child_conds[:] = child_conds[:config.MAX_CONDITIONS]
+        child_conds[:] = child_conds[:max_count]
 
     # Numeric parameters: average
     child_threshold = round((ind1.threshold + ind2.threshold) / 2, 4)
@@ -223,6 +225,10 @@ class GeneticOptimizer:
             f"GA: Starting | pop={self.population_size}, gen={self.generations}, "
             f"cx={self.crossover_prob}, mut={self.mutation_prob}, elite={self.elite_count}"
         )
+        logger.info(
+            "  Score = rr_per_day * drawdown_penalty * low_trades_penalty. "
+            "Higher = better. Negative or -inf means disqualified."
+        )
 
         # Create initial population
         population = [_create_random_individual() for _ in range(self.population_size)]
@@ -238,8 +244,9 @@ class GeneticOptimizer:
 
         logger.info(
             f"GA Gen 0/{self.generations} | "
-            f"Best: {self.best_score:.4f} | "
-            f"Avg: {self._avg_score(population):.4f}"
+            f"Best score: {self.best_score:.4f} | "
+            f"Avg score: {self._avg_score(population):.4f} | "
+            f"Pop: {len(population)}"
         )
 
         # Evolve
@@ -277,10 +284,11 @@ class GeneticOptimizer:
                 self.best_individual = population[0].copy()
                 new_best = True
 
-            marker = " ★ NEW BEST!" if new_best else ""
+            marker = " [NEW BEST!]" if new_best else ""
             logger.info(
                 f"GA Gen {gen}/{self.generations} | "
-                f"Best: {gen_best:.4f} | Avg: {gen_avg:.4f}{marker}"
+                f"Best score: {gen_best:.4f} | Avg score: {gen_avg:.4f} | "
+                f"Tested: {len(self.all_strategies)}{marker}"
             )
 
         # Handle case where no valid strategy was found
@@ -305,7 +313,8 @@ class GeneticOptimizer:
 
         logger.info(
             f"GA: Finished | Best score: {self.best_score:.4f} | "
-            f"Total strategies tested: {len(self.all_strategies)}"
+            f"Total strategies tested: {len(self.all_strategies)} | "
+            f"Passing top 10 to Bayesian optimizer."
         )
 
         return best_strat, top_10

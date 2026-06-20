@@ -75,6 +75,7 @@ class TrainingSession:
         """
         self.start_time = time.time()
         self._setup_logging()
+        self._reset_removed_conditions()
         self._log_start()
         self._load_and_prepare_data()
 
@@ -97,12 +98,31 @@ class TrainingSession:
         logging.getLogger().addHandler(fh)
         logger.info(f"Training log: {log_file}")
 
+    def _reset_removed_conditions(self) -> None:
+        """Clear the removed conditions file at the start of each training run.
+
+        This ensures conditions are re-evaluated with fresh market data
+        instead of being permanently excluded based on a previous regime.
+        """
+        path = config.REMOVED_CONDITIONS_FILE
+        if path.exists():
+            path.unlink()
+            logger.info("Cleared removed_conditions.json -- all 53 conditions available for this run.")
+
     def _log_start(self) -> None:
         """Log training session start."""
         logger.info(
             f"Training started | Method: {self.method} | "
             f"Symbol: {self.symbol} | Timeframe: {self.timeframe} | "
             f"Duration: {self.training_minutes} min"
+        )
+        logger.info(
+            "  Objective: Find the strategy with the highest score. "
+            "Score = rr_per_day x drawdown_penalty x low_trades_penalty."
+        )
+        logger.info(
+            "  Disqualified if: win_rate < 35%, max_drawdown > 50%, "
+            "or avg_trades/day outside 0.5-10."
         )
 
     def _load_and_prepare_data(self) -> None:
@@ -191,7 +211,7 @@ class TrainingSession:
 
         # --- Phase 1: Genetic Algorithm ---
         logger.info("=" * 60)
-        logger.info("Phase 1: Genetic Algorithm")
+        logger.info("Phase 1: Genetic Algorithm (global search -- evolve strategies over generations)")
         logger.info("=" * 60)
 
         # Allocate ~50% of time to GA, ~50% to Bayesian
@@ -233,7 +253,7 @@ class TrainingSession:
 
         # --- Phase 2: Bayesian Optimization ---
         logger.info("=" * 60)
-        logger.info("Phase 2: Bayesian Optimization")
+        logger.info("Phase 2: Bayesian Optimization (local refinement -- focus on promising regions)")
         logger.info("=" * 60)
 
         bayesian_start = time.time()
@@ -345,12 +365,33 @@ class TrainingSession:
 
         logger.info("=" * 60)
         logger.info("Training finished.")
-        logger.info(f"  Best score: {best.get('score', 'N/A')}")
-        logger.info(f"  Best strategy: {best.get('id', 'N/A')}")
+        logger.info("")
+
+        score = best.get('score', float('-inf'))
+        if score > float('-inf'):
+            logger.info(f"  Best score:          {score:.4f}")
+            logger.info(f"  Best strategy:       {best.get('id', 'N/A')}")
+            if 'results' in best:
+                r = best['results']
+                logger.info(f"    Win rate:          {r.get('win_rate', 0):.1%}")
+                logger.info(f"    RR/day:            {r.get('rr_per_day', 0):.4f}")
+                logger.info(f"    Max drawdown:      {r.get('max_drawdown', 0):.1%}")
+                logger.info(f"    Valid trades:      {r.get('valid_trades', 0)}")
+        else:
+            logger.info("  No valid strategy found (all disqualified).")
+            logger.info("  Consider: increase training time, relax criteria in config.py, or try a different symbol.")
+
+        logger.info("")
         logger.info(f"  Total strategies tested: {self.strategies_tested}")
-        logger.info(f"  Time elapsed: {elapsed:.0f}s ({elapsed / 60:.1f}m)")
-        logger.info(f"  Average: {rate:.1f} strats/sec")
-        logger.info(f"  Best strategy saved to {config.MODEL_DIR / 'best_strategy.json'}")
+        logger.info(f"  Time elapsed:        {elapsed:.0f}s ({elapsed / 60:.1f}m)")
+        logger.info(f"  Average:             {rate:.1f} strats/sec")
+        if score > float('-inf'):
+            logger.info(f"  Best strategy saved to {config.MODEL_DIR / 'best_strategy.json'}")
+            logger.info("")
+            logger.info("  Next steps:")
+            logger.info("    1. Review efficiency report above -- which conditions helped/hurt")
+            logger.info(f"    2. Run validation: python validation.py --symbol {self.symbol}")
+            logger.info("    3. If validation passes, go live: python live_signal.py")
         logger.info("=" * 60)
 
 

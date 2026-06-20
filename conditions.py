@@ -97,6 +97,23 @@ ALL_CONDITIONS: Dict[str, str] = {
 }
 
 
+def get_condition_count_range(pool_size: int) -> tuple:
+    """Calculate the min/max absolute condition counts from the percentage config.
+
+    Args:
+        pool_size: Number of available conditions in the pool.
+
+    Returns:
+        Tuple of (min_count, max_count).
+    """
+    import config
+    min_count = max(config.MIN_CONDITIONS_ABSOLUTE, int(pool_size * config.MIN_CONDITION_PERCENTAGE))
+    max_count = min(pool_size, int(pool_size * config.MAX_CONDITION_PERCENTAGE))
+    # Ensure min <= max
+    min_count = min(min_count, max_count)
+    return min_count, max_count
+
+
 def get_condition_pool(direction: str) -> List[str]:
     """Get the list of condition keys for a given direction.
 

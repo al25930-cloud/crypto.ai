@@ -39,9 +39,10 @@ TRAINING_MINUTES = 30
 TRAINING_PERIOD_MONTHS = 6
 TRAINING_METHOD = "ga_bayesian"  # "random" or "ga_bayesian"
 
-# === Strategy Generation ===
-MIN_CONDITIONS = 8
-MAX_CONDITIONS = 16
+# === Strategy Generation (percentage-based) ===
+MIN_CONDITION_PERCENTAGE = 0.25  # 25% of the pool
+MAX_CONDITION_PERCENTAGE = 0.90  # 90% of the pool
+MIN_CONDITIONS_ABSOLUTE = 3      # Safety floor (never go below 3 conditions)
 MIN_THRESHOLD = 0.5
 MAX_THRESHOLD = 0.7
 MIN_SL = 0.3  # percent
@@ -102,6 +103,7 @@ TOP_STRATEGIES_COUNT = 500
 
 # === Efficiency Thresholds ===
 EFFICIENCY_CRITICAL = 0.3
+MIN_POOL_SIZE = 20  # Minimum conditions per direction; refuse removals below this floor
 EFFICIENCY_ALERT = 0.5
 EFFICIENCY_WARNING = 0.7
 EFFICIENCY_STRONG = 1.3

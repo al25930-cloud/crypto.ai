@@ -156,17 +156,38 @@ python training.py --symbol BTC/USDT
 ### What you'll see
 
 ```
-[2026-06-19 14:00:00] Training started. Method: ga_bayesian | Symbol: BTC/USDT
-[2026-06-19 14:00:01] Phase 1: Genetic Algorithm (pop=200, gen=30)
-[2026-06-19 14:00:05] GA Gen 0/30 | Best: 1.85 | Avg: 1.12
-[2026-06-19 14:00:35] GA Gen 5/30 | Best: 2.10 | Avg: 1.34 | ★ NEW BEST!
+Training started | Method: ga_bayesian | Symbol: BTC/USDT | Duration: 30 min
+  Objective: Find the strategy with the highest score.
+  Score = rr_per_day x drawdown_penalty x low_trades_penalty.
+  Disqualified if: win_rate < 35%, max_drawdown > 50%, or avg_trades/day outside 0.5-10.
+
+Phase 1: Genetic Algorithm (global search -- evolve strategies over generations)
+GA: Starting | pop=200, gen=30, cx=0.8, mut=0.2, elite=5
+  Score = rr_per_day * drawdown_penalty * low_trades_penalty. Higher = better.
+GA Gen 0/30 | Best score: 1.85 | Avg score: 1.12 | Pop: 200
+GA Gen 1/30 | Best score: 1.92 | Avg score: 1.18 | Tested: 400
+GA Gen 5/30 | Best score: 2.10 | Avg score: 1.34 | Tested: 1200 [NEW BEST!]
 ...
-[2026-06-19 14:05:00] GA: Finished | Best score: 2.45 | Total strategies tested: 4,500
-[2026-06-19 14:05:01] Phase 2: Bayesian Optimization (trials=2000)
+GA: Finished | Best score: 2.45 | Total strategies tested: 4500 | Passing top 10 to Bayesian.
+
+Phase 2: Bayesian Optimization (local refinement -- focus on promising regions)
+Bayesian: Starting | trials=2000, startup=100
+  Each trial generates a strategy with random conditions, threshold, stop-loss, ...
+Bayesian: Seeded 10 strategies from GA.
 ...
-[2026-06-19 14:25:01] Training finished.
-   Best score: 2.68
-   Best strategy saved to models/best_strategy.json
+Bayesian: Finished | Best score: 2.68 | Total strategies tested: 2000
+
+Training finished.
+  Best score:          2.6800
+  Best strategy:       strat_abc123
+    Win rate:          52.0%
+    RR/day:            2.4500
+    Max drawdown:      12.3%
+    Valid trades:      142
+  Total strategies tested: 6500
+  Time elapsed:        1800s (30.0m)
+  Average:             3.6 strats/sec
+  Best strategy saved to models/best_strategy.json
 ```
 
 ### CLI options
@@ -196,7 +217,11 @@ The report is saved to `models/condition_efficiency.json` and also printed to th
 - 🔴 **ALERT** (0.3–0.5): Poor performer. Consider removing.
 - 🔴🔴 **CRITICAL** (< 0.3): **Automatically removed** from future training runs.
 
-You can restore removed conditions by deleting `models/removed_conditions.json`.
+**Pool size safeguard:** The system never removes conditions below 20 per direction (LONG/SHORT), so there are always enough conditions to build strategies.
+
+**Temporary removals:** Removed conditions are cleared at the start of each training run. All 53 conditions are re-evaluated with fresh market data, so conditions that underperformed in a previous market regime can recover.
+
+You can also manually restore removed conditions by deleting `models/removed_conditions.json`.
 
 ---
 
@@ -334,6 +359,33 @@ Press `Ctrl+C`. The bot will save its state and shut down gracefully.
 
 ---
 
+### Reading the Logs
+
+Here's what each log line means:
+
+| Log Field | Meaning |
+|---|---|
+| **Best score** | The highest score found so far in this phase. This is the score of the best strategy. |
+| **Avg score** | The average score of all living strategies in the current generation (GA only). Shows if the population is improving overall. |
+| **Tested** | Cumulative number of strategies evaluated so far. |
+| **Pop** | Population size (number of strategies in each generation). |
+| **[NEW BEST!]** | A new all-time best score was found this generation. |
+| **Passing top 10** | The top 10 GA strategies are passed as starting points for the Bayesian optimizer. |
+| **startup** | Number of random trials before the Bayesian TPE model kicks in (exploration phase). |
+
+The **score** is the primary metric the system optimizes for. It's calculated as:
+
+```
+score = rr_per_day x drawdown_penalty x low_trades_penalty
+```
+
+- **rr_per_day**: Risk-reward earned per trading day (higher = better)
+- **drawdown_penalty**: 1.0 if drawdown < 15%, scales linearly to 0 at 50%
+- **low_trades_penalty**: 0.5 if avg trades/day <= 2, else 1.0
+- **Disqualified** (score = -inf): win_rate < 35%, drawdown > 50%, or trades/day outside 0.5-10
+
+---
+
 ## Understanding the Output
 
 ### What is RR/day?
@@ -382,11 +434,12 @@ All parameters are in `config.py`. Here's the complete list:
 | `TRAINING_PERIOD_MONTHS` | `6` | Months of historical data for training |
 | `TRAINING_METHOD` | `"ga_bayesian"` | `"ga_bayesian"` or `"random"` |
 
-### Strategy Generation
+### Strategy Generation (percentage-based)
 | Parameter | Default | Description |
 |---|---|---|
-| `MIN_CONDITIONS` | `8` | Minimum conditions per strategy |
-| `MAX_CONDITIONS` | `16` | Maximum conditions per strategy |
+| `MIN_CONDITION_PERCENTAGE` | `0.25` | Minimum conditions as % of pool (25% of 31 = ~8) |
+| `MAX_CONDITION_PERCENTAGE` | `0.90` | Maximum conditions as % of pool (90% of 31 = ~28) |
+| `MIN_CONDITIONS_ABSOLUTE` | `3` | Safety floor -- never go below 3 conditions |
 | `MIN_THRESHOLD` | `0.5` | Minimum entry threshold (50%) |
 | `MAX_THRESHOLD` | `0.7` | Maximum entry threshold (70%) |
 | `MIN_SL` | `0.3` | Minimum stop-loss (%) |

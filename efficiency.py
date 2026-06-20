@@ -10,7 +10,7 @@ import logging
 from typing import Optional
 
 import config
-from conditions import ALL_CONDITIONS, get_direction_for_condition
+from conditions import ALL_CONDITIONS, get_direction_for_condition, get_condition_pool
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ def analyze_conditions(all_results: list[dict]) -> dict:
     # Save efficiency report
     _save_report(condition_stats, len(valid), global_rr)
 
-    # Auto-remove CRITICAL conditions
+    # Auto-remove CRITICAL conditions (with pool size floor safeguard)
     if removed_conditions:
         _remove_conditions(removed_conditions)
 
@@ -181,7 +181,11 @@ def _save_report(stats: dict, total_strategies: int, global_rr: float) -> None:
 
 
 def _remove_conditions(condition_keys: list) -> None:
-    """Add conditions to the removed list.
+    """Add conditions to the removed list, respecting the per-direction pool size floor.
+
+    Checks how many conditions would remain in each direction (LONG, SHORT)
+    after removal. If a direction's pool would drop below MIN_POOL_SIZE,
+    conditions from that direction are skipped.
 
     Args:
         condition_keys: List of condition key strings to remove.
@@ -195,13 +199,69 @@ def _remove_conditions(condition_keys: list) -> None:
         except Exception:
             pass
 
-    newly_removed = [k for k in condition_keys if k not in existing]
-    all_removed = sorted(existing | set(condition_keys))
+    # Count current active conditions per direction
+    long_pool = set(get_condition_pool("LONG"))
+    short_pool = set(get_condition_pool("SHORT"))
+    already_removed = existing
+
+    long_active = len(long_pool - already_removed)
+    short_active = len(short_pool - already_removed)
+
+    actually_removed = []
+    skipped = []
+
+    for key in condition_keys:
+        if key in existing:
+            continue  # Already removed, skip
+
+        direction = get_direction_for_condition(key)
+
+        # Count how many from each pool we've already committed to removing
+        long_removed_count = len([k for k in actually_removed if k in long_pool])
+        short_removed_count = len([k for k in actually_removed if k in short_pool])
+        long_remaining = long_active - long_removed_count
+        short_remaining = short_active - short_removed_count
+
+        # Check pool size floor for the affected direction
+        if direction == "LONG" and long_remaining <= config.MIN_POOL_SIZE:
+            skipped.append(key)
+            logger.info(
+                f"[EFFICIENCY] Skipping removal of '{key}' -- LONG pool would drop below {config.MIN_POOL_SIZE}"
+            )
+            continue
+        elif direction == "SHORT" and short_remaining <= config.MIN_POOL_SIZE:
+            skipped.append(key)
+            logger.info(
+                f"[EFFICIENCY] Skipping removal of '{key}' -- SHORT pool would drop below {config.MIN_POOL_SIZE}"
+            )
+            continue
+        elif direction == "SHARED":
+            if long_remaining <= config.MIN_POOL_SIZE or short_remaining <= config.MIN_POOL_SIZE:
+                skipped.append(key)
+                logger.info(
+                    f"[EFFICIENCY] Skipping removal of '{key}' -- SHARED condition, pool would drop below {config.MIN_POOL_SIZE}"
+                )
+                continue
+
+        actually_removed.append(key)
+
+    if not actually_removed:
+        if skipped:
+            logger.info(f"[EFFICIENCY] All {len(skipped)} CRITICAL conditions kept due to pool size floor ({config.MIN_POOL_SIZE}).")
+        return
+
+    all_removed = sorted(existing | set(actually_removed))
 
     import datetime as _dt
     with open(path, "w") as f:
         json.dump({"removed": all_removed, "updated": _dt.datetime.now().isoformat()}, f, indent=2)
 
-    for key in newly_removed:
-        eff = 0.0  # We already know it's critical
-        logger.info(f"[EFFICIENCY] Condition '{key}' removed from pool (efficiency: {eff:.2f}).")
+    for key in actually_removed:
+        logger.info(f"[EFFICIENCY] Condition '{key}' removed from pool (efficiency < {config.EFFICIENCY_CRITICAL}).")
+
+    if skipped:
+        logger.info(
+            f"[EFFICIENCY] {len(skipped)} condition(s) kept due to pool size floor: {skipped}"
+        )
+
+

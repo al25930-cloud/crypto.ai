@@ -6,11 +6,12 @@ Refines promising strategy regions found by the GA.
 """
 
 import logging
+import random as rng
 import uuid
 from typing import Callable, Optional
 
 import config
-from conditions import get_condition_pool
+from conditions import ALL_CONDITIONS, get_condition_pool, get_condition_count_range
 from strategy import _load_removed_conditions
 
 logger = logging.getLogger(__name__)
@@ -72,10 +73,13 @@ class BayesianOptimizer:
             f"Bayesian: Starting | trials={self.n_trials}, "
             f"startup={self.startup_trials}"
         )
+        logger.info(
+            "  Each trial generates a strategy with random conditions, threshold, "
+            "stop-loss, and risk-reward. The TPE model learns which parameter "
+            "combinations score highest and focuses the search there."
+        )
 
-        # Build the search space based on direction
-        # We pick the direction from seed strategies or random
-        directions = ["LONG", "SHORT"]
+        self.all_cond_names = sorted(ALL_CONDITIONS.keys())
 
         study = optuna.create_study(
             direction="maximize",
@@ -116,6 +120,10 @@ class BayesianOptimizer:
             f"Bayesian: Finished | Best score: {self.best_score:.4f} | "
             f"Total strategies tested: {len(self.all_strategies)}"
         )
+        logger.info(
+            "  Score = rr_per_day * drawdown_penalty * low_trades_penalty. "
+            "Higher = better."
+        )
 
         return best
 
@@ -132,12 +140,15 @@ class BayesianOptimizer:
         pool = get_condition_pool(direction)
         removed = _load_removed_conditions()
         pool = [c for c in pool if c not in removed]
+        pool_set = set(pool)
 
-        if len(pool) < config.MIN_CONDITIONS:
+        min_count, max_count = get_condition_count_range(len(pool))
+
+        if len(pool) < min_count:
             # Not enough conditions to form a valid strategy
             return {
                 "id": f"strat_{uuid.uuid4().hex[:8]}",
-                "conditions": pool[:config.MIN_CONDITIONS],
+                "conditions": pool[:min_count],
                 "threshold": 0.5,
                 "sl": 1.0,
                 "rr": 2.0,
@@ -145,27 +156,26 @@ class BayesianOptimizer:
             }
 
         num_conditions = trial.suggest_int(
-            "num_conditions", config.MIN_CONDITIONS, config.MAX_CONDITIONS
+            "num_conditions", min_count, max_count
         )
 
-        # Use full pool indices for a fixed categorical space (Optuna requirement)
-        # Deduplicate by wrapping around if collision occurs
-        full_pool_indices = list(range(len(pool)))
-        condition_indices = []
-        for i in range(config.MAX_CONDITIONS):
-            idx = trial.suggest_categorical(f"cond_{i}", full_pool_indices)
-            # Resolve collisions deterministically
-            original_idx = idx
-            while idx in condition_indices:
-                idx = (idx + 1) % len(pool)
-                if idx == original_idx:
-                    break  # Pool exhausted
-            if idx not in condition_indices:
-                condition_indices.append(idx)
-            if len(condition_indices) >= num_conditions:
+        # Use condition names as categorical values (pool-size invariant).
+        # This avoids index-out-of-range errors when the pool changes size
+        # between GA seeding and Bayesian execution (e.g. removed conditions).
+        selected_conditions = []
+        for i in range(max_count):
+            name = trial.suggest_categorical(f"cond_{i}", self.all_cond_names)
+            # Accept only if in current pool and not already selected
+            if name in pool_set and name not in selected_conditions:
+                selected_conditions.append(name)
+            if len(selected_conditions) >= num_conditions:
                 break
 
-        conditions = [pool[i] for i in condition_indices]
+        # Safety fallback: if no valid conditions (shouldn't happen), pick randomly
+        if not selected_conditions:
+            selected_conditions = list(rng.sample(pool, min(num_conditions, len(pool))))
+
+        conditions = selected_conditions
 
         threshold = round(
             trial.suggest_float("threshold", config.MIN_THRESHOLD, config.MAX_THRESHOLD), 4
@@ -196,24 +206,25 @@ class BayesianOptimizer:
             Dict of parameters compatible with study.enqueue_trial().
         """
         direction = strategy["direction"]
+
+        # Clamp num_conditions to the valid range for the current pool
         pool = get_condition_pool(direction)
         removed = _load_removed_conditions()
         pool = [c for c in pool if c not in removed]
+        min_count, max_count = get_condition_count_range(len(pool))
+        num = min(max(len(strategy["conditions"]), min_count), max_count)
 
         params = {
             "direction": direction,
-            "num_conditions": len(strategy["conditions"]),
+            "num_conditions": num,
             "threshold": strategy["threshold"],
             "sl": strategy["sl"],
             "rr": strategy["rr"],
         }
 
-        # Map conditions to indices
+        # Store condition names directly (not indices) so seeded values
+        # remain valid even if the pool changes size.
         for i, cond in enumerate(strategy["conditions"]):
-            if cond in pool:
-                params[f"cond_{i}"] = pool.index(cond)
-            else:
-                # Condition not in pool, use first available
-                params[f"cond_{i}"] = 0
+            params[f"cond_{i}"] = cond
 
         return params

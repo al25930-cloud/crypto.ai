@@ -184,7 +184,7 @@ def run_validation(
 def _log_validation_report(report: dict) -> None:
     """Log the validation report in a formatted table."""
     acc = report["acceptance"]
-    pass_icon = lambda v: "✅ PASS" if v else "❌ FAIL"
+    pass_icon = lambda v: "[PASS]" if v else "[FAIL]"
 
     logger.info("")
     logger.info("=" * 60)
@@ -212,9 +212,9 @@ def _log_validation_report(report: dict) -> None:
     logger.info(f"    Fees paid:     {report['total_fees_pct']:.4%}")
     logger.info("")
     if acc["all_pass"]:
-        logger.info("  ✅ ALL ACCEPTANCE CRITERIA PASSED")
+        logger.info("  ALL ACCEPTANCE CRITERIA PASSED")
     else:
-        logger.info("  ❌ SOME ACCEPTANCE CRITERIA FAILED — consider retraining")
+        logger.info("  SOME ACCEPTANCE CRITERIA FAILED -- consider retraining")
     logger.info("=" * 60)
 
 
