@@ -15,7 +15,7 @@ from conditions import ALL_CONDITIONS, get_direction_for_condition, get_conditio
 logger = logging.getLogger(__name__)
 
 
-def analyze_conditions(all_results: list[dict]) -> dict:
+def analyze_conditions(all_results: list[dict], remove: bool = True) -> dict:
     """Analyze condition efficiency across all tested strategies.
 
     For each condition, computes:
@@ -27,19 +27,23 @@ def analyze_conditions(all_results: list[dict]) -> dict:
     Args:
         all_results: List of dicts with keys 'strategy', 'results', 'score'.
             Each 'strategy' has 'conditions' list, each 'results' has metrics.
+        remove: If True, write removed conditions to file for downstream use.
+            If False, generate report only (no removal).
 
     Returns:
-        Dict mapping condition_key -> stats dict.
+        Dict with keys 'stats' (condition_key -> stats), 'removed' (list of
+        removed conditions), 'low_efficiency' (list of conditions with
+        efficiency 0.3-0.5 that get 0.5x selection weight).
     """
     if not all_results:
         logger.warning("No results to analyze.")
-        return {}
+        return {"stats": {}, "removed": [], "low_efficiency": []}
 
     # Filter to strategies with valid scores
     valid = [r for r in all_results if r["score"] > float("-inf")]
     if not valid:
         logger.warning("No valid strategies to analyze.")
-        return {}
+        return {"stats": {}, "removed": [], "low_efficiency": []}
 
     # Sort by score for top-10% calculation
     valid.sort(key=lambda r: r["score"], reverse=True)
@@ -130,26 +134,38 @@ def analyze_conditions(all_results: list[dict]) -> dict:
         del stats["rr_per_day_sum"]
         del stats["win_rate_sum"]
 
+    # Low-efficiency conditions (0.3 <= efficiency < 0.5) get 0.5x weight
+    low_efficiency_conditions = [
+        k for k, v in condition_stats.items()
+        if v["alert_level"] == "ALERT"
+    ]
+
     # Log the report
     _log_report(
         condition_stats, global_rr, len(valid), removed_conditions,
         global_rr_long, global_rr_short, len(long_strategies), len(short_strategies),
+        low_efficiency_conditions,
     )
 
     # Save efficiency report
     _save_report(condition_stats, len(valid), global_rr, global_rr_long, global_rr_short)
 
     # Auto-remove CRITICAL conditions (with pool size floor safeguard)
-    if removed_conditions:
-        _remove_conditions(removed_conditions)
+    if remove and removed_conditions:
+        _remove_conditions(removed_conditions, low_efficiency_conditions)
 
-    return condition_stats
+    return {
+        "stats": condition_stats,
+        "removed": removed_conditions,
+        "low_efficiency": low_efficiency_conditions,
+    }
 
 
 def _log_report(
     stats: dict, global_rr: float, total_strategies: int, removed: list,
     global_rr_long: float = 0.0, global_rr_short: float = 0.0,
     num_long: int = 0, num_short: int = 0,
+    low_efficiency: list = None,
 ) -> None:
     """Log the efficiency report."""
     logger.info("=" * 60)
@@ -192,6 +208,8 @@ def _log_report(
 
     if removed:
         logger.info(f"Auto-removed {len(removed)} conditions: {removed}")
+    if low_efficiency:
+        logger.info(f"Low-efficiency (0.5x weight): {len(low_efficiency)} conditions: {low_efficiency}")
 
     logger.info("=" * 60)
 
@@ -217,7 +235,7 @@ def _save_report(
     logger.info(f"Efficiency report saved to {path}")
 
 
-def _remove_conditions(condition_keys: list) -> None:
+def _remove_conditions(condition_keys: list, low_efficiency_keys: list = None) -> None:
     """Add conditions to the removed list, respecting the per-direction pool size floor.
 
     Checks how many conditions would remain in each direction (LONG, SHORT)
@@ -226,6 +244,8 @@ def _remove_conditions(condition_keys: list) -> None:
 
     Args:
         condition_keys: List of condition key strings to remove.
+        low_efficiency_keys: List of condition keys with efficiency 0.3-0.5.
+            Written to file for weighted selection in downstream optimizers.
     """
     path = config.REMOVED_CONDITIONS_FILE
     existing = set()
@@ -291,7 +311,11 @@ def _remove_conditions(condition_keys: list) -> None:
 
     import datetime as _dt
     with open(path, "w") as f:
-        json.dump({"removed": all_removed, "updated": _dt.datetime.now().isoformat()}, f, indent=2)
+        json.dump({
+            "removed": all_removed,
+            "low_efficiency": sorted(low_efficiency_keys or []),
+            "updated": _dt.datetime.now().isoformat(),
+        }, f, indent=2)
 
     for key in actually_removed:
         logger.info(f"[EFFICIENCY] Condition '{key}' removed from pool (efficiency < {config.EFFICIENCY_CRITICAL}).")

@@ -152,7 +152,7 @@ Training is a two-phase pipeline that tests thousands of strategy combinations t
 
 #### Stage 1: Data Preparation
 
-1. **Fetch historical data**: Downloads 6 months of 15-minute candles from Binance (cached to `data/` so subsequent runs are fast)
+1. **Fetch historical data**: Downloads 12 months of 15-minute candles from Binance (cached to `data/` so subsequent runs are fast)
 2. **Compute indicators**: Calculates all technical indicators (EMA, RSI, MACD, Bollinger Bands, ATR, etc.) for every candle
 3. **Pre-compute conditions**: All 53 conditions (e.g., `rsi_14_lt_30`, `price_gt_sma_200`) are evaluated for every candle and cached in memory. This avoids recomputing them for each strategy, which makes backtesting ~50x faster.
 
@@ -169,7 +169,7 @@ The GA mimics natural selection to explore a huge search space. It takes ~50% of
    - 7-27 conditions (randomly chosen from the pool of 31 available conditions per direction)
    - A threshold (0.5-0.7) — how many conditions must be true to enter a trade
    - A stop-loss (0.3%-3.0%) — maximum loss per trade
-   - A risk-reward ratio (1.0-5.0) — target profit relative to stop-loss
+   - A risk-reward ratio (1.0-8.0) — target profit relative to stop-loss
 
 2. **Evaluate every strategy**: Each strategy is backtested against 6 months of historical data. The backtest simulates: "If I had traded this strategy every time its conditions were met, what would my results be?" Each strategy gets a **score**:
    ```
@@ -177,7 +177,7 @@ The GA mimics natural selection to explore a huge search space. It takes ~50% of
    ```
    - **rr_per_day**: Risk-reward earned per trading day (higher = better)
    - **drawdown_penalty**: 1.0 if drawdown < 15%, scales linearly to 0 at 50%
-   - **low_trades_penalty**: 0.5 if avg trades/day <= 2, else 1.0
+   - **low_trades_penalty**: 0.7 if avg trades/day <= 1.5, else 1.0
    - Strategies that fail basic quality checks are **disqualified** (score = -inf):
      - Win rate < 35%
      - Max drawdown > 50%
@@ -185,7 +185,7 @@ The GA mimics natural selection to explore a huge search space. It takes ~50% of
 
 3. **Sort by fitness**: Population sorted by score (highest first). The top strategy is the "best" this generation.
 
-4. **Evolve for 30 generations**. Each generation does the following:
+4. **Evolve until time budget is exhausted** (GA uses ~50% of training time, up to 200 generations). Each generation does the following:
 
    **a) Elitism** — The top 5 strategies survive unchanged into the next generation. This guarantees we never lose our best strategy.
 
@@ -206,7 +206,7 @@ The GA mimics natural selection to explore a huge search space. It takes ~50% of
 
    **e) Re-evaluate** — Backtest all new children, sort by score, and check for a new all-time best.
 
-5. **After 30 generations**, the GA has tested ~6,000 strategies and converged toward high-scoring regions. The **top 10 strategies** are passed to Phase 2.
+5. **When the time budget is exhausted** (or 200 generations), the GA has converged toward high-scoring regions. The **top 10 strategies** are passed to Phase 2.
 
 ---
 
@@ -220,27 +220,31 @@ The GA found promising *regions* of the search space. Now Bayesian optimization 
 
 2. **Random exploration (100 trials)**: The first 100 trials explore randomly to build an initial model of the search space.
 
-3. **Bayesian-guided search (1,900 trials)**: After the startup phase, Optuna's TPE (Tree-structured Parzen Estimator) model kicks in:
+3. **Bayesian-guided search (until time runs out)**: After the startup phase, Optuna's TPE (Tree-structured Parzen Estimator) model kicks in:
    - It looks at all past trials and their scores
    - It learns: "Strategies with these kinds of conditions, this threshold range, this SL/RR tend to score higher"
    - It suggests new trials that are likely to score well
    - Each trial it learns more, so suggestions get smarter over time
+   - Continues until the remaining training time is exhausted (up to 10,000 trials as safety cap)
 
-4. **Best strategy found**: After 2,000 total trials, the optimizer returns the highest-scoring strategy it found.
+4. **Best strategy found**: The optimizer returns the highest-scoring strategy it found.
 
 **Why two phases?** The GA is good at exploring a huge space broadly (global search), but it's slow and imprecise. Bayesian optimization is good at refining a narrow region precisely (local search), but it needs good starting points. Combining them gives you both breadth and depth.
 
 ---
 
-#### Stage 4: Efficiency Analysis
+#### Stage 4: Efficiency Analysis (Mid-Training)
 
-After all strategies are tested, the system analyzes which of the 53 conditions are helping vs. hurting:
+After the Genetic Algorithm phase completes, the system analyzes which of the 53 conditions are helping vs. hurting:
 
 1. For each condition, calculate how often it appears in top-scoring strategies vs. bottom-scoring strategies
 2. Compute an **efficiency score**: how much a condition contributes to winning strategies relative to the average
-3. Conditions with efficiency < 0.3 are flagged for removal
-4. **Pool size safeguard**: The system never removes conditions below 20 per direction (LONG/SHORT), so there are always enough conditions to build strategies
-5. **Temporary removals**: Removed conditions are cleared at the start of each training run. All 53 conditions are re-evaluated with fresh market data
+3. Conditions with efficiency < 0.3 are **removed from the pool** before Bayesian Optimization starts
+4. Conditions with efficiency 0.3-0.5 are kept but given **0.5x selection weight** (less likely to be chosen)
+5. **Pool size safeguard**: The system never removes conditions below 20 per direction (LONG/SHORT), so there are always enough conditions to build strategies
+6. **Not persisted**: Removed conditions are cleared at the start of each training run. All 53 conditions are re-evaluated with fresh market data
+
+This focuses the Bayesian search on the most promising conditions, improving efficiency and results.
 
 ---
 
@@ -266,7 +270,7 @@ score = rr_per_day x drawdown_penalty x low_trades_penalty
 |---|---|---|
 | **rr_per_day** | Risk-reward earned per trading day | 0 to ~5 (higher = better) |
 | **drawdown_penalty** | Penalizes strategies with high drawdown | 0.0 (50% drawdown) to 1.0 (<15% drawdown) |
-| **low_trades_penalty** | Penalizes strategies that rarely trade | 0.5 (<=2 trades/day) or 1.0 |
+| **low_trades_penalty** | Penalizes strategies that rarely trade | 0.7 (<=1.5 trades/day) or 1.0 |
 
 **Disqualified strategies** get score = -inf (instantly lose to everything). A strategy is disqualified if:
 - Win rate < 35%
@@ -294,22 +298,25 @@ The key insight: **elitism guarantees the top 5 always survive**, while **tourna
 ```
 Training Start
     |
-    |-- Load 6 months of BTC/USDT data
+    |-- Load 12 months of BTC/USDT data
     |-- Compute all 53 conditions (pre-cached for speed)
     |
     |-- PHASE 1: Genetic Algorithm (~50% of time)
     |   |-- Gen 0: 200 random strategies
-    |   |-- Gen 1-30: Evolve via selection + crossover + mutation
-    |   |-- ~6,000 strategies tested
+    |   |-- Gen 1-N: Evolve via selection + crossover + mutation
     |   +-- Top 10 passed to Phase 2
+    |
+    |-- EFFICIENCY ANALYSIS (between phases)
+    |   |-- Remove conditions with efficiency < 0.3
+    |   |-- Weight conditions with efficiency 0.3-0.5 at 50%
+    |   +-- Log removed/weighted conditions
     |
     |-- PHASE 2: Bayesian Optimization (~50% of time)
     |   |-- Seed with GA's top 10
     |   |-- 100 random trials (build initial model)
-    |   |-- 1,900 smart trials (TPE-guided search)
-    |   +-- ~2,000 strategies tested
+    |   +-- TPE-guided trials (until time runs out)
     |
-    +-- Save best strategy + top 500 + efficiency report
+    +-- Compare with existing best, save if better
 ```
 
 ---
@@ -323,32 +330,37 @@ Training started | Method: ga_bayesian | Symbol: BTC/USDT | Duration: 30 min
   Disqualified if: win_rate < 35%, max_drawdown > 50%, or avg_trades/day outside 0.5-10.
 
 Phase 1: Genetic Algorithm (global search -- evolve strategies over generations)
-GA: Starting | pop=200, gen=30, cx=0.8, mut=0.2, elite=5
+GA: Starting | pop=200, time_budget=900s (15.0m), max_gen=200, cx=0.8, mut=0.2, elite=5
   Score = rr_per_day * drawdown_penalty * low_trades_penalty. Higher = better.
-GA Gen 0/30 | Best score: 1.85 | Avg score: 1.12 | Pop: 200
-GA Gen 1/30 | Best score: 1.92 | Avg score: 1.18 | Tested: 400
-GA Gen 5/30 | Best score: 2.10 | Avg score: 1.34 | Tested: 1200 [NEW BEST!]
+GA Gen 0 | Best score: 1.85 | Avg score: 1.12 | Pop: 200 | Elapsed: 30s
+GA Gen 1 | Best score: 1.92 | Avg score: 1.18 | Tested: 400 | Elapsed: 73s
+GA Gen 5 | Best score: 2.10 | Avg score: 1.34 | Tested: 1200 | Elapsed: 180s [NEW BEST!]
 ...
-GA: Finished | Best score: 2.45 | Total strategies tested: 4500 | Passing top 10 to Bayesian.
+GA: Finished | Best score: 2.45 | 25 generations | Elapsed: 870s | Strategies tested: 4500 | Speed: 5.2 strats/s | Passing top 10 to Bayesian optimizer.
+
+[EFFICIENCY] GA phase complete. Analyzing condition efficiency...
+[EFFICIENCY] Removing 16 conditions (efficiency < 0.3) before Bayesian.
+[EFFICIENCY] 4 conditions flagged low-efficiency (0.5x weight, eff 0.3-0.5)
 
 Phase 2: Bayesian Optimization (local refinement -- focus on promising regions)
-Bayesian: Starting | trials=2000, startup=100
+Bayesian: Starting | timeout=930s (15.5m), max_trials=10000, startup=100
   Each trial generates a strategy with random conditions, threshold, stop-loss, ...
 Bayesian: Seeded 10 strategies from GA.
 ...
-Bayesian: Finished | Best score: 2.68 | Total strategies tested: 2000
+Bayesian: Finished | Best score: 2.68 | 2000 trials | Elapsed: 930s | Speed: 2.1 trials/s
 
 Training finished.
   Best score:          2.6800
-  Best strategy:       strat_abc123
+  Best strategy:       strat_abc123 (LONG)
     Win rate:          52.0%
     RR/day:            2.4500
     Max drawdown:      12.3%
     Valid trades:      142
+
   Total strategies tested: 6500
   Time elapsed:        1800s (30.0m)
   Average:             3.6 strats/sec
-  Best strategy saved to models/best_strategy.json
+  New best strategy saved to models/best_strategy.json
 ```
 
 ### CLI options
@@ -533,6 +545,10 @@ Here's what each log line means:
 | **[NEW BEST!]** | A new all-time best score was found this generation. |
 | **Passing top 10** | The top 10 GA strategies are passed as starting points for the Bayesian optimizer. |
 | **startup** | Number of random trials before the Bayesian TPE model kicks in (exploration phase). |
+| **time_budget** | Maximum time allocated to the GA phase (~50% of total training time). |
+| **timeout** | Maximum time allocated to the Bayesian phase (remaining time after GA + efficiency analysis). |
+| **Elapsed** | Wall-clock time since the phase started. |
+| **Speed** | Strategies tested per second. |
 
 The **score** is the primary metric the system optimizes for. It's calculated as:
 
@@ -542,7 +558,7 @@ score = rr_per_day x drawdown_penalty x low_trades_penalty
 
 - **rr_per_day**: Risk-reward earned per trading day (higher = better)
 - **drawdown_penalty**: 1.0 if drawdown < 15%, scales linearly to 0 at 50%
-- **low_trades_penalty**: 0.5 if avg trades/day <= 2, else 1.0
+- **low_trades_penalty**: 0.7 if avg trades/day <= 1.5, else 1.0
 - **Disqualified** (score = -inf): win_rate < 35%, drawdown > 50%, or trades/day outside 0.5-10
 
 ---
@@ -560,7 +576,7 @@ score = rr_per_day × low_trades_penalty × drawdown_penalty
 ```
 
 **Step 1 — Low trade frequency penalty:**
-- If avg trades/day ≤ 2: rr_per_day is multiplied by 0.5 (50% penalty)
+- If avg trades/day ≤ 1.5: rr_per_day is multiplied by 0.7 (30% penalty)
 - This filters out strategies that rarely trade, since low sample sizes are unreliable
 
 **Step 2 — Drawdown penalty:**
@@ -592,7 +608,7 @@ All parameters are in `config.py`. Here's the complete list:
 | Parameter | Default | Description |
 |---|---|---|
 | `TRAINING_MINUTES` | `30` | Training duration in minutes |
-| `TRAINING_PERIOD_MONTHS` | `6` | Months of historical data for training |
+| `TRAINING_PERIOD_MONTHS` | `12` | Months of historical data for training |
 | `TRAINING_METHOD` | `"ga_bayesian"` | `"ga_bayesian"` or `"random"` |
 
 ### Strategy Generation (percentage-based)
@@ -606,7 +622,7 @@ All parameters are in `config.py`. Here's the complete list:
 | `MIN_SL` | `0.3` | Minimum stop-loss (%) |
 | `MAX_SL` | `3.0` | Maximum stop-loss (%) |
 | `MIN_RR` | `1.0` | Minimum risk-reward ratio |
-| `MAX_RR` | `5.0` | Maximum risk-reward ratio |
+| `MAX_RR` | `8.0` | Maximum risk-reward ratio |
 
 ### Disqualification
 | Parameter | Default | Description |
@@ -615,8 +631,8 @@ All parameters are in `config.py`. Here's the complete list:
 | `MAX_DRAWDOWN` | `0.50` | Maximum drawdown (50%) |
 | `MIN_TRADES_PER_DAY` | `0.5` | Minimum trades per day |
 | `MAX_TRADES_PER_DAY` | `10` | Maximum trades per day |
-| `LOW_TRADES_THRESHOLD` | `2.0` | If avg trades/day ≤ this, apply 50% penalty |
-| `LOW_TRADES_PENALTY` | `0.5` | Score multiplier for low-frequency strategies |
+| `LOW_TRADES_THRESHOLD` | `1.5` | If avg trades/day ≤ this, apply penalty |
+| `LOW_TRADES_PENALTY` | `0.7` | Score multiplier for low-frequency strategies (70%) |
 
 ### Trade Rules
 | Parameter | Default | Description |
@@ -630,7 +646,8 @@ All parameters are in `config.py`. Here's the complete list:
 | Parameter | Default | Description |
 |---|---|---|
 | `GA_POPULATION_SIZE` | `200` | Strategies per generation |
-| `GA_GENERATIONS` | `30` | Number of generations |
+| `GA_MAX_GENERATIONS` | `200` | Safety cap on generations (time budget is the real limiter) |
+| `GA_TIME_BUDGET_PERCENT` | `0.5` | Fraction of training time allocated to GA (50%) |
 | `GA_ELITE_COUNT` | `5` | Top strategies preserved each generation |
 | `GA_CROSSOVER_PROB` | `0.8` | Probability of crossover |
 | `GA_MUTATION_PROB` | `0.2` | Probability of mutation |
@@ -638,8 +655,8 @@ All parameters are in `config.py`. Here's the complete list:
 ### Bayesian Parameters
 | Parameter | Default | Description |
 |---|---|---|
-| `BAYESIAN_N_TRIALS` | `2000` | Total optimization trials |
-| `BAYESIAN_STARTUP_TRIALS` | `100` | Random trials before Bayesian model kicks in |
+| `BAYESIAN_MAX_TRIALS` | `10000` | Safety cap on trials (timeout is the real limiter) |
+| `BAYESIAN_STARTUP_TRIALS` | `100` | Random trials before Bayesian TPE model kicks in |
 
 ---
 
@@ -727,7 +744,21 @@ Not simultaneously. Train and run live mode for one symbol at a time. You can ru
 3.  python training.py --minutes 2 --method random   # Quick smoke test
 4.  python training.py                         # Full GA+Bayesian training (30 min)
 5.  Review efficiency report in console         # Check which conditions work
-6.  python validation.py --period 12           # Validate on separate data7. Check acceptance criteria (WR≥35%, DD≤50%, PF≥1.3)
+6.  python validation.py --period 12           # Validate on separate data
+7.  Check acceptance criteria (WR≥35%, DD≤50%, PF≥1.3)
 8.  python live_signal.py                      # Start receiving signals
 9.  Check Discord for entry/exit alerts         # Execute trades manually
 ```
+
+---
+
+## Future Enhancements
+
+The following features are planned but not yet implemented:
+
+- **Monte Carlo simulation**: Shuffle trade order to check if strategy performance is statistically significant
+- **Sensitivity analysis**: Test how strategy performance changes when parameters are slightly modified
+- **Walk-forward validation**: Rolling window validation to check strategy stability over time
+- **Out-of-sample testing**: Test on data from different market regimes (bull, bear, sideways)
+
+To contribute or request these features, open an issue on the repository.

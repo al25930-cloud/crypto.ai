@@ -12,7 +12,7 @@ from typing import Callable, Optional
 
 import config
 from conditions import ALL_CONDITIONS, get_condition_pool, get_condition_count_range
-from strategy import _load_removed_conditions
+from strategy import _load_removed_conditions, _load_condition_weights
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class BayesianOptimizer:
     def __init__(
         self,
         eval_func: EvalFunc,
-        n_trials: int = config.BAYESIAN_N_TRIALS,
+        n_trials: int = config.BAYESIAN_MAX_TRIALS,
         startup_trials: int = config.BAYESIAN_STARTUP_TRIALS,
     ):
         """Initialize the Bayesian optimizer.
@@ -59,19 +59,24 @@ class BayesianOptimizer:
         self.best_score: float = float("-inf")
         self.best_strategy: Optional[dict] = None
 
-    def run(self, seed_strategies: Optional[list[dict]] = None) -> dict:
+    def run(self, seed_strategies: Optional[list[dict]] = None, timeout_seconds: Optional[float] = None) -> dict:
         """Run Bayesian optimization.
 
         Args:
             seed_strategies: Optional list of strategy dicts from GA to seed initial trials.
                 These are enqueued as the first trials in the Optuna study.
+            timeout_seconds: Optional time budget in seconds. Optuna stops when exceeded.
 
         Returns:
             Best strategy dict found.
         """
+        import time as _time
+        start_time = _time.time()
+
+        timeout_str = f"{timeout_seconds:.0f}s ({timeout_seconds / 60:.1f}m)" if timeout_seconds else "unlimited"
         logger.info(
-            f"Bayesian: Starting | trials={self.n_trials}, "
-            f"startup={self.startup_trials}"
+            f"Bayesian: Starting | timeout={timeout_str}, "
+            f"max_trials={self.n_trials}, startup={self.startup_trials}"
         )
         logger.info(
             "  Each trial generates a strategy with random conditions, threshold, "
@@ -105,7 +110,12 @@ class BayesianOptimizer:
                 self.best_strategy = strategy
             return score
 
-        study.optimize(objective, n_trials=self.n_trials, show_progress_bar=False)
+        study.optimize(
+            objective,
+            n_trials=self.n_trials,
+            timeout=timeout_seconds,
+            show_progress_bar=False,
+        )
 
         # Build best strategy
         if self.best_strategy is None:
@@ -116,9 +126,12 @@ class BayesianOptimizer:
         best["score"] = self.best_score
         best["method"] = "bayesian"
 
+        total_elapsed = _time.time() - start_time
+        speed = len(self.all_strategies) / total_elapsed if total_elapsed > 0 else 0
         logger.info(
             f"Bayesian: Finished | Best score: {self.best_score:.4f} | "
-            f"Total strategies tested: {len(self.all_strategies)}"
+            f"{len(self.all_strategies)} trials | Elapsed: {total_elapsed:.0f}s | "
+            f"Speed: {speed:.1f} trials/s"
         )
         logger.info(
             "  Score = rr_per_day * drawdown_penalty * low_trades_penalty. "
@@ -140,6 +153,17 @@ class BayesianOptimizer:
         pool = get_condition_pool(direction)
         removed = _load_removed_conditions()
         pool = [c for c in pool if c not in removed]
+
+        # Apply low-efficiency weighting: include with 50% probability per trial
+        weights = _load_condition_weights()
+        if weights:
+            weighted_pool = [
+                c for c in pool
+                if weights.get(c, 1.0) >= 1.0 or rng.random() < weights[c]
+            ]
+            if weighted_pool:
+                pool = weighted_pool
+
         pool_set = set(pool)
 
         min_count, max_count = get_condition_count_range(len(pool))

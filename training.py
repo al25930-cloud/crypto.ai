@@ -29,6 +29,7 @@ from indicators import compute_all_conditions
 from strategy import (
     generate_random_strategy,
     is_disqualified,
+    load_strategy,
     save_strategy,
     save_top_strategies,
     score_strategy,
@@ -84,8 +85,8 @@ class TrainingSession:
         else:
             best = self._run_random_search()
 
-        self._save_results(best)
-        self._log_finish(best)
+        saved_new = self._save_results(best)
+        self._log_finish(best, saved_new=saved_new)
         return best
 
     def _setup_logging(self) -> None:
@@ -133,7 +134,13 @@ class TrainingSession:
             timeframe=self.timeframe,
             months=config.TRAINING_PERIOD_MONTHS,
         )
-        logger.info(f"Raw data: {len(raw_df)} candles")
+        # Show training period dates
+        if not raw_df.empty:
+            period_start = raw_df["timestamp"].iloc[0].strftime("%Y-%m-%d")
+            period_end = raw_df["timestamp"].iloc[-1].strftime("%Y-%m-%d")
+            logger.info(f"Raw data: {len(raw_df)} candles ({period_start} to {period_end}, {config.TRAINING_PERIOD_MONTHS} months)")
+        else:
+            logger.info(f"Raw data: {len(raw_df)} candles")
 
         # Compute all indicators and drop NaN warmup rows
         logger.info("Computing indicators...")
@@ -216,40 +223,49 @@ class TrainingSession:
 
         # Allocate ~50% of time to GA, ~50% to Bayesian
         ga_start = time.time()
-        ga_minutes = self.training_minutes * 0.5
-
-        # Adjust GA generations based on time budget
-        estimated_secs_per_gen = 5  # Rough estimate
-        max_ga_gens = max(5, int((ga_minutes * 60) / estimated_secs_per_gen))
-        ga_generations = min(config.GA_GENERATIONS, max_ga_gens)
+        ga_time_budget = self.training_minutes * 60 * config.GA_TIME_BUDGET_PERCENT
 
         ga = GeneticOptimizer(
             eval_func=self._eval_strategy,
             population_size=config.GA_POPULATION_SIZE,
-            generations=ga_generations,
             elite_count=config.GA_ELITE_COUNT,
             crossover_prob=config.GA_CROSSOVER_PROB,
             mutation_prob=config.GA_MUTATION_PROB,
         )
 
-        ga_best, ga_top_10 = ga.run()
+        ga_best, ga_top_10 = ga.run(
+            time_limit_seconds=ga_time_budget,
+            max_generations=config.GA_MAX_GENERATIONS,
+        )
         ga_elapsed = time.time() - ga_start
 
         if ga_best["score"] > best_score:
             best_score = ga_best["score"]
             best_strategy = ga_best
 
-        logger.info(
-            f"GA Phase complete | Elapsed: {ga_elapsed:.0f}s | "
-            f"Best score: {ga_best['score']:.4f} | "
-            f"Strategies tested: {self.strategies_tested}"
-        )
+        # --- Efficiency Analysis (between GA and Bayesian) ---
+        logger.info("")
+        logger.info("[EFFICIENCY] GA phase complete. Analyzing condition efficiency...")
+        try:
+            eff_result = analyze_conditions(self.all_results, remove=True)
+            removed = eff_result.get("removed", [])
+            low_eff = eff_result.get("low_efficiency", [])
+            if removed:
+                logger.info(f"[EFFICIENCY] Removing {len(removed)} conditions (efficiency < {config.EFFICIENCY_CRITICAL}) before Bayesian.")
+                logger.info(f"[EFFICIENCY] Removed: {removed}")
+            if low_eff:
+                logger.info(f"[EFFICIENCY] {len(low_eff)} conditions flagged low-efficiency (0.5x weight, eff {config.EFFICIENCY_CRITICAL:.1f}-{config.EFFICIENCY_ALERT:.1f}): {low_eff}")
+            if not removed and not low_eff:
+                logger.info("[EFFICIENCY] All conditions performing well. No removals.")
+        except Exception as e:
+            logger.warning(f"Efficiency analysis failed: {e}")
+        logger.info("")
 
-        # Check if we still have time for Bayesian
-        remaining_minutes = self.training_minutes - (ga_elapsed / 60)
-        if remaining_minutes < 0.5:
+        # Check remaining time AFTER efficiency analysis (it takes non-trivial time)
+        remaining_seconds = self.training_minutes * 60 - (time.time() - self.start_time)
+        if remaining_seconds < 30:
             logger.info("No time remaining for Bayesian optimization. Skipping.")
-            return best_strategy
+            return self.best_strategy or best_strategy
 
         # --- Phase 2: Bayesian Optimization ---
         logger.info("=" * 60)
@@ -258,32 +274,21 @@ class TrainingSession:
 
         bayesian_start = time.time()
 
-        # Adjust trial count based on remaining time
-        estimated_secs_per_trial = 0.5
-        max_trials = max(50, int((remaining_minutes * 60) / estimated_secs_per_trial))
-        n_trials = min(config.BAYESIAN_N_TRIALS, max_trials)
-
         bo = BayesianOptimizer(
             eval_func=self._eval_strategy,
-            n_trials=n_trials,
-            startup_trials=min(config.BAYESIAN_STARTUP_TRIALS, n_trials // 5),
+            n_trials=config.BAYESIAN_MAX_TRIALS,
+            startup_trials=config.BAYESIAN_STARTUP_TRIALS,
         )
 
-        # Seed with top GA strategies
-        bo_best = bo.run(seed_strategies=ga_top_10)
+        # Seed with top GA strategies, run with timeout
+        bo_best = bo.run(seed_strategies=ga_top_10, timeout_seconds=remaining_seconds)
         bayesian_elapsed = time.time() - bayesian_start
 
         if bo_best.get("score", float("-inf")) > best_score:
             best_score = bo_best["score"]
             best_strategy = bo_best
 
-        logger.info(
-            f"Bayesian Phase complete | Elapsed: {bayesian_elapsed:.0f}s | "
-            f"Best score: {bo_best.get('score', float('-inf')):.4f} | "
-            f"Strategies tested: {self.strategies_tested}"
-        )
-
-        return best_strategy
+        return self.best_strategy or best_strategy
 
     # =========================================================================
     # Random Search (Quick Testing Mode)
@@ -323,11 +328,17 @@ class TrainingSession:
     # Results Saving
     # =========================================================================
 
-    def _save_results(self, best: dict) -> None:
-        """Save best strategy, top strategies, and efficiency report."""
+    def _save_results(self, best: dict) -> bool:
+        """Save best strategy, top strategies, and efficiency report.
+
+        Returns:
+            True if a new best strategy was saved, False if existing was retained.
+        """
+        saved_new = False
+
         if not best:
             logger.warning("No valid strategy found during training.")
-            return
+            return saved_new
 
         # Add training metadata
         best["training_time"] = datetime.now().isoformat()
@@ -335,10 +346,31 @@ class TrainingSession:
         best["symbol"] = self.symbol
         best["strategies_tested"] = self.strategies_tested
 
-        # Save best strategy
-        save_strategy(best)
+        # Compare with existing best before saving (Issue 2)
+        try:
+            existing_best = load_strategy()
+        except Exception:
+            existing_best = None
 
-        # Save top 500 strategies (sorted by score)
+        if existing_best is None:
+            logger.info("No existing best strategy found. Saving new strategy.")
+            save_strategy(best)
+            saved_new = True
+        elif "score" not in existing_best:
+            logger.warning("Existing strategy has no 'score' key. Overwriting with new strategy.")
+            save_strategy(best)
+            saved_new = True
+        elif existing_best["score"] >= best.get("score", float("-inf")):
+            logger.info(
+                f"Keeping existing best strategy (score: {existing_best['score']:.4f}) "
+                f"-- new strategy score ({best.get('score', float('-inf')):.4f}) is not higher."
+            )
+        else:
+            logger.info(f"Saving new best strategy (score: {best.get('score', float('-inf')):.4f})")
+            save_strategy(best)
+            saved_new = True
+
+        # Save top 500 strategies (always overwrite -- per-run snapshot, not cumulative)
         scored = [r for r in self.all_results if r["score"] > float("-inf")]
         scored.sort(key=lambda r: r["score"], reverse=True)
         top_strategies = []
@@ -352,13 +384,17 @@ class TrainingSession:
             top_strategies.append(s)
         save_top_strategies(top_strategies)
 
-        # Run efficiency analysis
-        try:
-            analyze_conditions(self.all_results)
-        except Exception as e:
-            logger.warning(f"Efficiency analysis failed: {e}")
+        # Efficiency analysis: for ga_bayesian, it already ran between GA and Bayesian.
+        # For other methods (e.g. random), run it now as a final report.
+        if self.method != "ga_bayesian":
+            try:
+                analyze_conditions(self.all_results, remove=False)
+            except Exception as e:
+                logger.warning(f"Efficiency analysis failed: {e}")
 
-    def _log_finish(self, best: dict) -> None:
+        return saved_new
+
+    def _log_finish(self, best: dict, saved_new: bool = False) -> None:
         """Log training session summary."""
         elapsed = time.time() - self.start_time
         rate = self.strategies_tested / elapsed if elapsed > 0 else 0
@@ -370,7 +406,8 @@ class TrainingSession:
         score = best.get('score', float('-inf'))
         if score > float('-inf'):
             logger.info(f"  Best score:          {score:.4f}")
-            logger.info(f"  Best strategy:       {best.get('id', 'N/A')}")
+            direction = best.get('direction', '')
+            logger.info(f"  Best strategy:       {best.get('id', 'N/A')} ({direction})")
             if 'results' in best:
                 r = best['results']
                 logger.info(f"    Win rate:          {r.get('win_rate', 0):.1%}")
@@ -386,7 +423,10 @@ class TrainingSession:
         logger.info(f"  Time elapsed:        {elapsed:.0f}s ({elapsed / 60:.1f}m)")
         logger.info(f"  Average:             {rate:.1f} strats/sec")
         if score > float('-inf'):
-            logger.info(f"  Best strategy saved to {config.MODEL_DIR / 'best_strategy.json'}")
+            if saved_new:
+                logger.info(f"  New best strategy saved to {config.MODEL_DIR / 'best_strategy.json'}")
+            else:
+                logger.info(f"  Existing best strategy retained (score: {score:.4f})")
             logger.info("")
             logger.info("  Next steps:")
             logger.info("    1. Review efficiency report above -- which conditions helped/hurt")

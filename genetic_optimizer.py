@@ -197,7 +197,7 @@ class GeneticOptimizer:
         self,
         eval_func: EvalFunc,
         population_size: int = config.GA_POPULATION_SIZE,
-        generations: int = config.GA_GENERATIONS,
+        generations: int = config.GA_MAX_GENERATIONS,
         elite_count: int = config.GA_ELITE_COUNT,
         crossover_prob: float = config.GA_CROSSOVER_PROB,
         mutation_prob: float = config.GA_MUTATION_PROB,
@@ -214,15 +214,25 @@ class GeneticOptimizer:
         self.best_individual: Optional[Individual] = None
         self.best_score: float = float("-inf")
 
-    def run(self) -> tuple[dict, list[dict]]:
+    def run(self, time_limit_seconds: Optional[float] = None, max_generations: int = config.GA_MAX_GENERATIONS) -> tuple[dict, list[dict]]:
         """Run the genetic algorithm.
+
+        Args:
+            time_limit_seconds: Optional time budget in seconds. GA stops when exceeded.
+            max_generations: Safety cap on generations (default: config.GA_MAX_GENERATIONS).
+                Whichever limit (time or generations) is hit first stops the GA.
 
         Returns:
             Tuple of (best_strategy_dict, top_10_strategies_list).
             Returns an empty strategy dict if no valid strategy was found.
         """
+        import time as _time
+        start_time = _time.time()
+
+        time_str = f"{time_limit_seconds:.0f}s ({time_limit_seconds / 60:.1f}m)" if time_limit_seconds else "unlimited"
         logger.info(
-            f"GA: Starting | pop={self.population_size}, gen={self.generations}, "
+            f"GA: Starting | pop={self.population_size}, "
+            f"time_budget={time_str}, max_gen={max_generations}, "
             f"cx={self.crossover_prob}, mut={self.mutation_prob}, elite={self.elite_count}"
         )
         logger.info(
@@ -242,15 +252,16 @@ class GeneticOptimizer:
             self.best_score = population[0].fitness
             self.best_individual = population[0].copy()
 
+        gen_elapsed = _time.time() - start_time
         logger.info(
-            f"GA Gen 0/{self.generations} | "
+            f"GA Gen 0 | "
             f"Best score: {self.best_score:.4f} | "
             f"Avg score: {self._avg_score(population):.4f} | "
-            f"Pop: {len(population)}"
+            f"Pop: {len(population)} | Elapsed: {gen_elapsed:.0f}s"
         )
 
         # Evolve
-        for gen in range(1, self.generations + 1):
+        for gen in range(1, max_generations + 1):
             # Elitism: preserve top N (copies with fitness preserved)
             elite = [population[i].copy() for i in range(min(self.elite_count, len(population)))]
 
@@ -285,11 +296,20 @@ class GeneticOptimizer:
                 new_best = True
 
             marker = " [NEW BEST!]" if new_best else ""
+            gen_elapsed = _time.time() - start_time
             logger.info(
-                f"GA Gen {gen}/{self.generations} | "
+                f"GA Gen {gen} | "
                 f"Best score: {gen_best:.4f} | Avg score: {gen_avg:.4f} | "
-                f"Tested: {len(self.all_strategies)}{marker}"
+                f"Tested: {len(self.all_strategies)} | Elapsed: {gen_elapsed:.0f}s{marker}"
             )
+
+            # Check time limit
+            if time_limit_seconds and (_time.time() - start_time) >= time_limit_seconds:
+                logger.info(f"GA: Time budget exhausted at generation {gen}. Stopping.")
+                break
+        else:
+            if max_generations > 0:
+                logger.info(f"GA: Reached max generation cap ({max_generations}). Stopping.")
 
         # Handle case where no valid strategy was found
         if self.best_individual is None:
@@ -311,9 +331,12 @@ class GeneticOptimizer:
         best_strat["score"] = self.best_score
         best_strat["method"] = "ga"
 
+        total_elapsed = _time.time() - start_time
+        speed = len(self.all_strategies) / total_elapsed if total_elapsed > 0 else 0
         logger.info(
             f"GA: Finished | Best score: {self.best_score:.4f} | "
-            f"Total strategies tested: {len(self.all_strategies)} | "
+            f"{gen} generations | Elapsed: {total_elapsed:.0f}s | "
+            f"Strategies tested: {len(self.all_strategies)} | Speed: {speed:.1f} strats/s | "
             f"Passing top 10 to Bayesian optimizer."
         )
 

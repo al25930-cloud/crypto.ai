@@ -12,7 +12,7 @@ import argparse
 import json
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -101,15 +101,25 @@ def run_validation(
     # Fetch validation data
     logger.info(f"Fetching validation data: {symbol} {timeframe}, non-overlapping {period_months} months")
     raw_df = get_validation_data(symbol=symbol, timeframe=timeframe, months=period_months)
-    logger.info(f"Raw data: {len(raw_df)} candles")
 
     if raw_df.empty:
         logger.error("No data fetched. Check connection and symbol.")
         return {"error": "No data fetched"}
 
+    # Log period information (Issue 6)
+    now = datetime.now(timezone.utc)
+    train_end = now - timedelta(days=config.TRAINING_PERIOD_MONTHS * 30)
+    train_start = train_end - timedelta(days=config.TRAINING_PERIOD_MONTHS * 30)
+    val_start = raw_df["timestamp"].iloc[0]
+    val_end = raw_df["timestamp"].iloc[-1]
+    logger.info(f"Raw data: {len(raw_df)} candles ({val_start.strftime('%Y-%m-%d')} to {val_end.strftime('%Y-%m-%d')}, {period_months} months)")
+    logger.info(f"Training period: {train_start.strftime('%Y-%m-%d')} to {train_end.strftime('%Y-%m-%d')} ({config.TRAINING_PERIOD_MONTHS} months)")
+    logger.info(f"Validation period: {val_start.strftime('%Y-%m-%d')} to {val_end.strftime('%Y-%m-%d')} (non-overlapping)")
+
     # Prepare data
     clean_df, conditions_df = prepare_data(raw_df, strategy["conditions"])
     logger.info(f"Clean data: {len(clean_df)} candles after warmup")
+    logger.info(f"  Note: {len(raw_df) - len(clean_df)} candles dropped for indicator warmup.")
 
     if len(clean_df) < 100:
         logger.warning("Very few candles after warmup. Results may be unreliable.")
@@ -135,6 +145,13 @@ def run_validation(
         start_date = str(clean_df["timestamp"].iloc[0].date())
         end_date = str(clean_df["timestamp"].iloc[-1].date())
 
+    # --- Issue 1: Recalculate RR/day using total period days ---
+    total_days = (clean_df["timestamp"].iloc[-1] - clean_df["timestamp"].iloc[0]).days
+    total_days = max(total_days, 1)  # Avoid division by zero
+    rr_per_day = results["total_rr"] / total_days
+    avg_trades_per_day = results["valid_trades"] / total_days
+    logger.info(f"RR/day: {rr_per_day:.4f}  (total RR {results['total_rr']:.2f} / {total_days} calendar days)")
+
     # Acceptance criteria check
     acceptance = {
         "win_rate_pass": results["win_rate"] >= 0.35,
@@ -144,6 +161,9 @@ def run_validation(
     acceptance["all_pass"] = all(acceptance.values())
 
     # Build validation report
+    # TODO: Future enhancement — add Monte Carlo simulation here
+    # Shuffle trade order N times, recalculate drawdown and Sharpe for each,
+    # report confidence intervals. See README "Future Enhancements" section.
     report = {
         "strategy_id": strategy.get("id", "unknown"),
         "symbol": symbol,
@@ -158,9 +178,10 @@ def run_validation(
         "profit_factor": round(profit_factor, 4) if profit_factor != float("inf") else "inf",
         "sharpe_ratio": round(sharpe, 4),
         "max_drawdown": round(results["max_drawdown"], 4),
-        "rr_per_day": round(results["rr_per_day"], 4),
+        "rr_per_day": round(rr_per_day, 4),
         "total_rr": round(results["total_rr"], 4),
-        "trading_days": results["trading_days"],
+        "total_days": total_days,
+        "avg_trades_per_day": round(avg_trades_per_day, 4),
         "exit_sl_count": results["exit_sl_count"],
         "exit_tp_count": results["exit_tp_count"],
         "exit_timeout_count": results["exit_timeout_count"],

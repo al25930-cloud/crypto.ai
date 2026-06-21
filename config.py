@@ -52,14 +52,15 @@ MAX_RR = 8.0
 
 # === GA Parameters ===
 GA_POPULATION_SIZE = 200
-GA_GENERATIONS = 30
+GA_MAX_GENERATIONS = 200         # Safety cap for time-based GA (rarely hit)
+GA_TIME_BUDGET_PERCENT = 0.5     # Use 50% of training time for GA
 GA_ELITE_COUNT = 5
 GA_MUTATION_PROB = 0.2
 GA_CROSSOVER_PROB = 0.8
 
 # === Bayesian Parameters ===
-BAYESIAN_N_TRIALS = 2000
-BAYESIAN_STARTUP_TRIALS = 100
+BAYESIAN_MAX_TRIALS = 10000      # Safety cap for timeout-based Bayesian (rarely hit)
+BAYESIAN_STARTUP_TRIALS = 100    # Random trials before TPE model kicks in
 
 # === Qualification / Disqualification ===
 MIN_TRADES_PER_DAY = 0.5

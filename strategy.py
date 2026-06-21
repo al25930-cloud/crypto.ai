@@ -39,6 +39,16 @@ def generate_random_strategy(direction: Optional[str] = None) -> dict:
     removed = _load_removed_conditions()
     pool = [c for c in pool if c not in removed]
 
+    # Apply low-efficiency weighting: include with 50% probability
+    weights = _load_condition_weights()
+    if weights:
+        weighted_pool = [
+            c for c in pool
+            if weights.get(c, 1.0) >= 1.0 or random.random() < weights[c]
+        ]
+        if weighted_pool:
+            pool = weighted_pool
+
     min_count, max_count = get_condition_count_range(len(pool))
     num_conditions = random.randint(min_count, max_count)
     conditions = random.sample(pool, min(num_conditions, len(pool)))
@@ -177,6 +187,28 @@ def _load_removed_conditions() -> set:
         return set(data.get("removed", []))
     except Exception:
         return set()
+
+
+def _load_condition_weights() -> dict:
+    """Load condition weights from models/removed_conditions.json.
+
+    Low-efficiency conditions (efficiency 0.3-0.5) get a weight of 0.5,
+    meaning they have a 50% chance of being included in the pool per strategy.
+
+    Returns:
+        Dict mapping condition_key -> weight (0.5 for low-efficiency).
+        Conditions not in the dict have implicit weight 1.0.
+    """
+    path = config.REMOVED_CONDITIONS_FILE
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        low_eff = set(data.get("low_efficiency", []))
+        return {c: 0.5 for c in low_eff}
+    except Exception:
+        return {}
 
 
 def clamp(value: float, min_val: float, max_val: float) -> float:
