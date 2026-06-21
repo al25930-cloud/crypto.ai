@@ -63,10 +63,8 @@ BAYESIAN_MAX_TRIALS = 10000      # Safety cap for timeout-based Bayesian (rarely
 BAYESIAN_STARTUP_TRIALS = 100    # Random trials before TPE model kicks in
 
 # === Qualification / Disqualification ===
-MIN_TRADES_PER_DAY = 0.5
+MIN_TRADES_PER_DAY = 1.5
 MAX_TRADES_PER_DAY = 10
-LOW_TRADES_THRESHOLD = 1.5       # If avg trades/day <= this, apply penalty
-LOW_TRADES_PENALTY = 0.7        # 30% score penalty for low trade frequency
 MIN_WIN_RATE = 0.35  # 35%
 MAX_DRAWDOWN = 0.50  # 50%
 DRAWDOWN_PENALTY_START = 0.15  # 15%

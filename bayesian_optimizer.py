@@ -58,6 +58,9 @@ class BayesianOptimizer:
         self.all_strategies: list[dict] = []
         self.best_score: float = float("-inf")
         self.best_strategy: Optional[dict] = None
+        # Cached file I/O (loaded once per run, not per trial)
+        self._cached_removed: Optional[set] = None
+        self._cached_weights: Optional[dict] = None
 
     def run(self, seed_strategies: Optional[list[dict]] = None, timeout_seconds: Optional[float] = None) -> dict:
         """Run Bayesian optimization.
@@ -93,12 +96,27 @@ class BayesianOptimizer:
             ),
         )
 
+        # Cache file I/O reads ONCE before the loop (not per trial)
+        self._cached_removed = _load_removed_conditions()
+        self._cached_weights = _load_condition_weights()
+
         # Enqueue seed strategies from GA
         if seed_strategies:
             for strat in seed_strategies:
                 params = self._strategy_to_params(strat)
                 study.enqueue_trial(params)
             logger.info(f"Bayesian: Seeded {len(seed_strategies)} strategies from GA.")
+
+        # Manual timeout callback as safety net.
+        # Optuna's built-in timeout sometimes fails when trials are slow
+        # (e.g., due to memory pressure or GC pauses). This callback
+        # checks after each trial and forces a stop if time is exceeded.
+        _deadline = start_time + timeout_seconds if timeout_seconds else None
+
+        def _timeout_callback(study: optuna.Study, trial: optuna.trial.FrozenTrial) -> None:
+            if _deadline and _time.time() >= _deadline:
+                logger.info("Bayesian: Manual timeout safety net triggered. Stopping.")
+                study.stop()
 
         # Objective function wrapping eval_func
         def objective(trial: optuna.Trial) -> float:
@@ -110,10 +128,13 @@ class BayesianOptimizer:
                 self.best_strategy = strategy
             return score
 
+        callbacks = [_timeout_callback] if _deadline else []
+
         study.optimize(
             objective,
             n_trials=self.n_trials,
             timeout=timeout_seconds,
+            callbacks=callbacks,
             show_progress_bar=False,
         )
 
@@ -151,11 +172,12 @@ class BayesianOptimizer:
         """
         direction = trial.suggest_categorical("direction", ["LONG", "SHORT"])
         pool = get_condition_pool(direction)
-        removed = _load_removed_conditions()
+        # Use cached file reads instead of re-reading from disk per trial
+        removed = self._cached_removed or set()
         pool = [c for c in pool if c not in removed]
 
         # Apply low-efficiency weighting: include with 50% probability per trial
-        weights = _load_condition_weights()
+        weights = self._cached_weights
         if weights:
             weighted_pool = [
                 c for c in pool
@@ -233,7 +255,8 @@ class BayesianOptimizer:
 
         # Clamp num_conditions to the valid range for the current pool
         pool = get_condition_pool(direction)
-        removed = _load_removed_conditions()
+        # Use cached file reads instead of re-reading from disk
+        removed = self._cached_removed or set()
         pool = [c for c in pool if c not in removed]
         min_count, max_count = get_condition_count_range(len(pool))
         num = min(max(len(strategy["conditions"]), min_count), max_count)

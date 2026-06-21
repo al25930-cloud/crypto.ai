@@ -81,6 +81,8 @@ def score_strategy(results: dict) -> float:
         Float score, or float('-inf') if disqualified.
     """
     # Disqualification checks
+    if results["avg_trades_per_day"] < config.MIN_TRADES_PER_DAY:
+        return float("-inf")
     if results["avg_trades_per_day"] > config.MAX_TRADES_PER_DAY:
         return float("-inf")
     if results["win_rate"] < config.MIN_WIN_RATE:
@@ -90,11 +92,6 @@ def score_strategy(results: dict) -> float:
 
     rr_per_day = results["rr_per_day"]
     max_drawdown = results["max_drawdown"]
-    avg_trades = results["avg_trades_per_day"]
-
-    # Low trade frequency penalty
-    if avg_trades <= config.LOW_TRADES_THRESHOLD:
-        rr_per_day *= config.LOW_TRADES_PENALTY
 
     # Drawdown penalty
     if max_drawdown < config.DRAWDOWN_PENALTY_START:
@@ -118,6 +115,8 @@ def is_disqualified(results: dict) -> tuple[bool, str]:
     Returns:
         Tuple of (is_disqualified: bool, reason: str).
     """
+    if results["avg_trades_per_day"] < config.MIN_TRADES_PER_DAY:
+        return True, f"Too few trades/day: {results['avg_trades_per_day']:.2f} < {config.MIN_TRADES_PER_DAY} minimum"
     if results["avg_trades_per_day"] > config.MAX_TRADES_PER_DAY:
         return True, f"Too many trades/day: {results['avg_trades_per_day']:.1f} > {config.MAX_TRADES_PER_DAY}"
     if results["win_rate"] < config.MIN_WIN_RATE:

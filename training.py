@@ -122,8 +122,8 @@ class TrainingSession:
             "Score = rr_per_day x drawdown_penalty x low_trades_penalty."
         )
         logger.info(
-            "  Disqualified if: win_rate < 35%, max_drawdown > 50%, "
-            "or avg_trades/day outside 0.5-10."
+            f"  Disqualified if: trades/day < {config.MIN_TRADES_PER_DAY}, win_rate < 35%, "
+            "max_drawdown > 50%, or avg_trades/day outside 0.5-10."
         )
 
     def _load_and_prepare_data(self) -> None:
@@ -175,9 +175,14 @@ class TrainingSession:
         score = score_strategy(results)
 
         self.strategies_tested += 1
+        # Strip heavyweight data (equity_curve, trades) before storing.
+        # These are only needed for the best strategy, not the full history.
+        # Storing them for 5000+ strategies causes memory exhaustion, GC pauses,
+        # and OS swapping that cripples the Bayesian phase (36x slower + timeout failure).
+        lite_results = {k: v for k, v in results.items() if k not in ("equity_curve", "trades")}
         self.all_results.append({
             "strategy": strategy,
-            "results": results,
+            "results": lite_results,
             "score": score,
         })
 

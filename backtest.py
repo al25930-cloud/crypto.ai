@@ -51,8 +51,8 @@ def backtest_strategy(
 
     Returns:
         Dict with keys:
-            total_trades, valid_trades, win_rate, total_rr, trading_days,
-            rr_per_day, max_drawdown, avg_trades_per_day, trades,
+            total_trades, valid_trades, win_rate, total_rr, total_period_days,
+            trading_days, rr_per_day, max_drawdown, avg_trades_per_day, trades,
             invalid_trades, timeout_trades, exit_sl_count, exit_tp_count,
             exit_timeout_count, total_fees
     """
@@ -283,8 +283,16 @@ def backtest_strategy(
     else:
         win_rate = 0.0
 
-    # RR/day: sum of valid trade RRs / number of trading days
+    # RR/day: sum of valid trade RRs / total calendar days in the backtest period
     total_rr = sum(t["rr"] for t in valid_trades)
+
+    # Total calendar days in the backtest period (first candle to last candle)
+    if n > 1:
+        first_ts = pd.Timestamp(timestamps[0]).to_pydatetime()
+        last_ts_end = pd.Timestamp(timestamps[-1]).to_pydatetime()
+        total_period_days = max((last_ts_end - first_ts).days, 1)
+    else:
+        total_period_days = 1  # Avoid division by zero
 
     # Count unique trading days (days with at least one trade entry)
     if trades:
@@ -296,8 +304,8 @@ def backtest_strategy(
     else:
         trading_days = 1  # Avoid division by zero
 
-    rr_per_day = total_rr / trading_days
-    avg_trades_per_day = num_valid / trading_days
+    rr_per_day = total_rr / total_period_days
+    avg_trades_per_day = num_valid / total_period_days
 
     return {
         "total_trades": total_trades,
@@ -306,6 +314,7 @@ def backtest_strategy(
         "timeout_trades": num_timeout,
         "win_rate": float(win_rate),
         "total_rr": float(total_rr),
+        "total_period_days": total_period_days,
         "trading_days": trading_days,
         "rr_per_day": float(rr_per_day),
         "max_drawdown": float(max_drawdown),
