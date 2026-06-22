@@ -10,7 +10,11 @@ import random as rng
 from typing import Callable, Optional
 
 import config
-from conditions import get_condition_count_range
+from conditions import (
+    get_condition_count_range,
+    get_direction_for_condition,
+    ALL_CONDITIONS,
+)
 from strategy import generate_random_strategy
 
 logger = logging.getLogger(__name__)
@@ -27,10 +31,9 @@ class Individual:
     evaluated-but-disqualified).
     """
 
-    __slots__ = ("direction", "conditions", "threshold", "sl_atr_mult", "rr", "fitness")
+    __slots__ = ("conditions", "threshold", "sl_atr_mult", "rr", "fitness")
 
-    def __init__(self, direction: str, conditions: list, threshold: float, sl_atr_mult: float, rr: float):
-        self.direction = direction
+    def __init__(self, conditions: list, threshold: float, sl_atr_mult: float, rr: float):
         self.conditions = list(conditions)  # always a fresh copy
         self.threshold = threshold
         self.sl_atr_mult = sl_atr_mult
@@ -41,7 +44,6 @@ class Individual:
         """Convert to a strategy dict."""
         return {
             "id": "",
-            "direction": self.direction,
             "conditions": list(self.conditions),
             "threshold": self.threshold,
             "sl_atr_mult": self.sl_atr_mult,
@@ -50,7 +52,8 @@ class Individual:
 
     def copy(self) -> "Individual":
         """Create a deep copy preserving fitness."""
-        ind = Individual(            self.direction, list(self.conditions),
+        ind = Individual(
+            list(self.conditions),
             self.threshold, self.sl_atr_mult, self.rr,
         )
         ind.fitness = self.fitness
@@ -58,14 +61,15 @@ class Individual:
 
     def copy_without_fitness(self) -> "Individual":
         """Create a deep copy with fitness reset to None (needs re-evaluation)."""
-        return Individual(self.direction, list(self.conditions), self.threshold, self.sl_atr_mult, self.rr,)
+        return Individual(
+            list(self.conditions), self.threshold, self.sl_atr_mult, self.rr,
+        )
 
 
-def _create_random_individual(direction: Optional[str] = None) -> Individual:
+def _create_random_individual() -> Individual:
     """Create a random individual from a random strategy."""
-    strat = generate_random_strategy(direction)
+    strat = generate_random_strategy()
     return Individual(
-        direction=strat["direction"],
         conditions=strat["conditions"],
         threshold=strat["threshold"],
         sl_atr_mult=strat["sl_atr_mult"],
@@ -73,13 +77,40 @@ def _create_random_individual(direction: Optional[str] = None) -> Individual:
     )
 
 
+def _ensure_balance(conditions: list) -> None:
+    """Ensure at least 2 LONG and 2 SHORT conditions in the list (in-place).
+
+    Adds random conditions from the appropriate pool if needed.
+    """
+    long_count = sum(1 for c in conditions if get_direction_for_condition(c) == "LONG")
+    short_count = sum(1 for c in conditions if get_direction_for_condition(c) == "SHORT")
+
+    all_long = [c for c in ALL_CONDITIONS.keys() if get_direction_for_condition(c) == "LONG"]
+    all_short = [c for c in ALL_CONDITIONS.keys() if get_direction_for_condition(c) == "SHORT"]
+
+    available_long = [c for c in all_long if c not in conditions]
+    available_short = [c for c in all_short if c not in conditions]
+
+    while long_count < 2 and available_long:
+        extra = rng.choice(available_long)
+        conditions.append(extra)
+        available_long.remove(extra)
+        long_count += 1
+
+    while short_count < 2 and available_short:
+        extra = rng.choice(available_short)
+        conditions.append(extra)
+        available_short.remove(extra)
+        short_count += 1
+
+
 def _mate(ind1: Individual, ind2: Individual) -> tuple[Individual, Individual]:
     """Crossover two individuals to produce two distinct offspring.
 
-    Crossover logic (from spec section 5.3.1):
+    Crossover logic:
     - Conditions: first half from parent 1, second half from parent 2 (and vice versa)
     - Threshold, SL, RR: average of parents
-    - Direction: inherit from the respective parent
+    - No direction inheritance — direction emerges from condition mix at entry time
     """
     conds1 = list(ind1.conditions)
     conds2 = list(ind2.conditions)
@@ -89,20 +120,28 @@ def _mate(ind1: Individual, ind2: Individual) -> tuple[Individual, Individual]:
     child1_conds = conds1[:mid1] + conds2[mid2:]
     child2_conds = conds2[:mid2] + conds1[mid1:]
 
-    # Deduplicate and pad each child
-    from conditions import get_condition_pool
-    for child_conds, direction in [(child1_conds, ind1.direction), (child2_conds, ind2.direction)]:
+    # Deduplicate each child
+    for child_conds in [child1_conds, child2_conds]:
         seen = set()
         child_conds[:] = [c for c in child_conds if not (c in seen or seen.add(c))]
-        pool = get_condition_pool(direction)
-        removed = _load_removed()
-        pool = [c for c in pool if c not in removed]
-        min_count, max_count = get_condition_count_range(len(pool))
-        while len(child_conds) < min_count:
-            extra = rng.choice(pool)
-            if extra not in child_conds:
-                child_conds.append(extra)
-        child_conds[:] = child_conds[:max_count]
+
+    # Ensure balance (at least 2 LONG + 2 SHORT)
+    _ensure_balance(child1_conds)
+    _ensure_balance(child2_conds)
+
+    # Enforce max conditions cap BEFORE balance (balance may add conditions)
+    pool_size = len(ALL_CONDITIONS)
+    _, max_count = get_condition_count_range(pool_size)
+    child1_conds[:] = child1_conds[:max_count]
+    child2_conds[:] = child2_conds[:max_count]
+
+    # Ensure balance (at least 2 LONG + 2 SHORT) AFTER capping
+    _ensure_balance(child1_conds)
+    _ensure_balance(child2_conds)
+
+    # Re-cap only if balance enforcement pushed over max (rare, acceptable)
+    child1_conds[:] = child1_conds[:max_count]
+    child2_conds[:] = child2_conds[:max_count]
 
     # Numeric parameters: average
     child_threshold = round((ind1.threshold + ind2.threshold) / 2, 4)
@@ -110,8 +149,8 @@ def _mate(ind1: Individual, ind2: Individual) -> tuple[Individual, Individual]:
     child_rr = round((ind1.rr + ind2.rr) / 2, 2)
 
     # New individuals have fitness=None (need evaluation)
-    new_ind1 = Individual(ind1.direction, child1_conds, child_threshold, child_sl_atr_mult, child_rr)
-    new_ind2 = Individual(ind2.direction, child2_conds, child_threshold, child_sl_atr_mult, child_rr)
+    new_ind1 = Individual(child1_conds, child_threshold, child_sl_atr_mult, child_rr)
+    new_ind2 = Individual(child2_conds, child_threshold, child_sl_atr_mult, child_rr)
     return new_ind1, new_ind2
 
 
@@ -132,14 +171,14 @@ def _mutate(ind: Individual, mutation_prob: float = config.GA_MUTATION_PROB) -> 
 
     if mutation_type == "condition":
         if len(new_ind.conditions) > 0:
-            from conditions import get_condition_pool
-            pool = get_condition_pool(new_ind.direction)
+            all_pool = list(ALL_CONDITIONS.keys())
             removed = _load_removed()
-            pool = [c for c in pool if c not in removed]
-            available = [c for c in pool if c not in new_ind.conditions]
+            available = [c for c in all_pool if c not in new_ind.conditions and c not in removed]
             if available:
                 idx = rng.randint(0, len(new_ind.conditions) - 1)
                 new_ind.conditions[idx] = rng.choice(available)
+            # Ensure balance after mutation
+            _ensure_balance(new_ind.conditions)
     elif mutation_type == "threshold":
         delta = rng.choice([-0.05, 0.05])
         new_ind.threshold = round(
@@ -312,7 +351,7 @@ class GeneticOptimizer:
             logger.warning("GA: No valid strategy found during training.")
             return {
                 "id": "none", "conditions": [], "threshold": 0.5,
-                "sl_atr_mult": 1.5, "rr": 2.0, "direction": "LONG",
+                "sl_atr_mult": 1.5, "rr": 2.0,
                 "score": float("-inf"), "method": "ga",
             }, []
 

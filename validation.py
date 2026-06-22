@@ -92,11 +92,16 @@ def run_validation(
         return {"error": "No best strategy found"}
 
     logger.info(f"Strategy: {strategy['id']}")
-    logger.info(f"  Direction: {strategy['direction']}")
-    logger.info(f"  Conditions ({len(strategy['conditions'])}): {strategy['conditions']}")
+    # Show direction mix instead of fixed direction
+    from conditions import get_direction_for_condition
+    conds = strategy['conditions']
+    long_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'LONG')
+    short_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'SHORT')
+    shared_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'SHARED')
+    logger.info(f"  Direction mix: LONG:{long_conds} SHORT:{short_conds} SHARED:{shared_conds}")
+    logger.info(f"  Conditions ({len(conds)}): {conds}")
     logger.info(f"  Threshold: {strategy['threshold']}")
-    logger.info(f"  SL: {strategy['sl']}%")
-    logger.info(f"  RR: {strategy['rr']}")
+    logger.info(f"  SL_ATR_MULT: {strategy.get('sl_atr_mult', strategy.get('sl', 'N/A'))}, RR: {strategy['rr']}")
 
     # Fetch validation data
     logger.info(f"Fetching validation data: {symbol} {timeframe}, non-overlapping {period_months} months")
@@ -160,6 +165,14 @@ def run_validation(
     }
     acceptance["all_pass"] = all(acceptance.values())
 
+    # Compute timeout-specific metrics
+    timeout_trades = [t for t in all_trades if t.get("result") == "timeout"]
+    data_end_trades = [t for t in all_trades if t.get("result") == "data_end"]
+    timeout_rr_values = [t["rr"] for t in timeout_trades]
+    avg_timeout_rr = float(np.mean(timeout_rr_values)) if timeout_rr_values else 0.0
+    total_exits = results["exit_sl_count"] + results["exit_tp_count"] + results["exit_timeout_count"] + results.get("exit_data_end_count", 0)
+    timeout_ratio = results["exit_timeout_count"] / total_exits if total_exits > 0 else 0.0
+
     # Build validation report
     # TODO: Future enhancement — add Monte Carlo simulation here
     # Shuffle trade order N times, recalculate drawdown and Sharpe for each,
@@ -185,6 +198,9 @@ def run_validation(
         "exit_sl_count": results["exit_sl_count"],
         "exit_tp_count": results["exit_tp_count"],
         "exit_timeout_count": results["exit_timeout_count"],
+        "data_end_trades": len(data_end_trades),
+        "timeout_ratio": round(timeout_ratio, 4),
+        "avg_timeout_rr": round(avg_timeout_rr, 4),
         "total_fees_pct": round(results["total_fees"], 6),
         "acceptance": acceptance,
         "validated_at": datetime.now().isoformat(),
@@ -217,7 +233,8 @@ def _log_validation_report(report: dict) -> None:
     logger.info(f"  Total trades:    {report['total_trades']}")
     logger.info(f"  Valid trades:    {report['valid_trades']}")
     logger.info(f"  Invalid trades:  {report['invalid_trades']} (too short)")
-    logger.info(f"  Timeout trades:  {report['timeout_trades']} (48h limit)")
+    logger.info(f"  Timeout trades:  {report['timeout_trades']} (limit: {config.MAX_TRADE_DURATION_HOURS}h, {report['timeout_ratio']:.0%} of exits, avg RR: {report['avg_timeout_rr']:+.2f})")
+    logger.info(f"  Data-end closes: {report.get('data_end_trades', 0)} (backtest period ended while in position)")
     logger.info("")
     logger.info(f"  Win rate:        {report['win_rate']:.1%}  {pass_icon(acc['win_rate_pass'])} (threshold: ≥35%)")
     logger.info(f"  Profit factor:   {report['profit_factor']}  {pass_icon(acc['profit_factor_pass'])} (threshold: ≥1.3)")
@@ -229,8 +246,8 @@ def _log_validation_report(report: dict) -> None:
     logger.info(f"  Exit breakdown:")
     logger.info(f"    SL hits:       {report['exit_sl_count']}")
     logger.info(f"    TP hits:       {report['exit_tp_count']}")
-    logger.info(f"    Timeouts:      {report['exit_timeout_count']}")
-    logger.info(f"    Fees paid:     {report['total_fees_pct']:.4%}")
+    logger.info(f"    Timeouts:      {report['exit_timeout_count']} (limit: {config.MAX_TRADE_DURATION_HOURS}h, avg RR: {report['avg_timeout_rr']:+.2f})")
+    logger.info(f"    Fees paid:     {report['total_fees_pct']:.4%} (rate: {config.TRADING_FEE_PCT}% per side)")
     logger.info("")
     if acc["all_pass"]:
         logger.info("  ALL ACCEPTANCE CRITERIA PASSED")

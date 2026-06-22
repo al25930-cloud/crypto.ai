@@ -158,8 +158,13 @@ class LiveSignalGenerator:
             return
 
         logger.info(f"Strategy loaded: {self.strategy['id']}")
-        logger.info(f"  Direction: {self.strategy['direction']}")
-        logger.info(f"  Conditions: {len(self.strategy['conditions'])}")
+        # Show direction mix instead of fixed direction
+        conds = self.strategy['conditions']
+        long_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'LONG')
+        short_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'SHORT')
+        shared_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'SHARED')
+        logger.info(f"  Direction mix: LONG:{long_conds} SHORT:{short_conds} SHARED:{shared_conds}")
+        logger.info(f"  Conditions: {len(conds)}")
         logger.info(f"  Threshold: {self.strategy['threshold']}")
         logger.info(f"  SL_ATR_MULT: {self.strategy.get('sl_atr_mult', self.strategy.get('sl', 'N/A'))}, RR: {self.strategy['rr']}")
         logger.info(f"Symbol: {self.symbol} | Timeframe: {self.timeframe}")
@@ -228,15 +233,34 @@ class LiveSignalGenerator:
         strategy = self.strategy
         conditions = strategy["conditions"]
 
-        # Compute conditions for the latest candle
-        cond_df = compute_all_conditions(df, conditions)
-        last_row = cond_df.iloc[-1]
+        # Compute conditions only for the latest candle (not all 500)
+        latest_df = df.iloc[[-1]]  # Single-row DataFrame
+        cond_df = compute_all_conditions(latest_df, conditions)
+        last_row = cond_df.iloc[0]
         conditions_met = int(last_row.sum())
         conditions_total = len(conditions)
         satisfaction = conditions_met / conditions_total if conditions_total > 0 else 0
 
         if satisfaction >= strategy["threshold"]:
-            direction = strategy["direction"]
+            # Dynamic direction: compute per-direction strength
+            long_conds_list = [c for c in conditions if get_direction_for_condition(c) == 'LONG']
+            short_conds_list = [c for c in conditions if get_direction_for_condition(c) == 'SHORT']
+            long_true = int(last_row[long_conds_list].sum()) if long_conds_list else 0
+            short_true = int(last_row[short_conds_list].sum()) if short_conds_list else 0
+            long_strength = long_true / len(long_conds_list) if long_conds_list else 0
+            short_strength = short_true / len(short_conds_list) if short_conds_list else 0
+
+            if long_strength >= config.MIN_DIRECTION_STRENGTH and long_strength > short_strength * config.DIRECTION_RATIO:
+                direction = "LONG"
+            elif short_strength >= config.MIN_DIRECTION_STRENGTH and short_strength > long_strength * config.DIRECTION_RATIO:
+                direction = "SHORT"
+            else:
+                direction = None  # HOLD — ambiguous
+
+            if direction is None:
+                logger.info(f"Conditions met but no clear direction (LONG:{long_strength:.0%} SHORT:{short_strength:.0%}). HOLD.")
+                return
+
             sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))
             rr = strategy["rr"]
             atr_value = float(latest.get("atr_14", 0))
@@ -256,6 +280,7 @@ class LiveSignalGenerator:
             logger.info(
                 f"Signal: {direction} at ${price:,.2f} | "
                 f"SL ${sl_price:,.2f} | TP ${tp_price:,.2f} | "
+                f"Strength LONG:{long_strength:.0%} SHORT:{short_strength:.0%} | "
                 f"Confidence {confidence:.0f}% ({conditions_met}/{conditions_total})"
             )
 
@@ -392,7 +417,20 @@ class LiveSignalGenerator:
             if satisfaction >= strategy["threshold"]:
                 ts = offline_df.iloc[i]["timestamp"]
                 price = float(offline_df.iloc[i]["close"])
-                direction = strategy["direction"]
+                # Dynamic direction for missed signal
+                miss_long = [c for c in conditions if get_direction_for_condition(c) == 'LONG']
+                miss_short = [c for c in conditions if get_direction_for_condition(c) == 'SHORT']
+                long_true = int(row[miss_long].sum()) if miss_long else 0
+                short_true = int(row[miss_short].sum()) if miss_short else 0
+                long_str = long_true / len(miss_long) if miss_long else 0
+                short_str = short_true / len(miss_short) if miss_short else 0
+                if long_str >= config.MIN_DIRECTION_STRENGTH and long_str > short_str * config.DIRECTION_RATIO:
+                    direction = "LONG"
+                elif short_str >= config.MIN_DIRECTION_STRENGTH and short_str > long_str * config.DIRECTION_RATIO:
+                    direction = "SHORT"
+                else:
+                    continue  # No clear direction, skip this missed signal
+
                 sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))
                 rr = strategy["rr"]
                 atr_value = float(offline_df.iloc[i].get("atr_14", 0))

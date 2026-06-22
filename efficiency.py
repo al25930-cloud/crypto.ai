@@ -48,24 +48,35 @@ def analyze_conditions(all_results: list[dict], remove: bool = True) -> dict:
     # Sort by score for top-10% calculation
     valid.sort(key=lambda r: r["score"], reverse=True)
     top_10_cutoff = max(1, len(valid) // 10)
-    top_10_set = set(id(r) for r in valid[:top_10_cutoff])
 
     # Direction-aware global averages
-    # LONG and SHORT strategies perform differently depending on market regime.
-    # Comparing LONG conditions against a global avg dominated by SHORT strategies
-    # (in a bear market) unfairly penalizes all LONG conditions. Instead, compare
-    # each condition against the average of strategies in the same direction.
-    long_strategies = [r for r in valid if r["strategy"].get("direction") == "LONG"]
-    short_strategies = [r for r in valid if r["strategy"].get("direction") == "SHORT"]
+    # Bi-directional strategies have no 'direction' field — each strategy
+    # contains a mix of LONG, SHORT, and SHARED conditions. To compute
+    # per-direction averages, each strategy contributes proportionally to
+    # both LONG and SHORT pools based on its condition mix.
+    global_rr_long_sum = 0.0
+    global_rr_short_sum = 0.0
+    long_weight_sum = 0.0
+    short_weight_sum = 0.0
 
-    global_rr_long = (
-        sum(r["results"]["rr_per_day"] for r in long_strategies) / len(long_strategies)
-        if long_strategies else 0.0
-    )
-    global_rr_short = (
-        sum(r["results"]["rr_per_day"] for r in short_strategies) / len(short_strategies)
-        if short_strategies else 0.0
-    )
+    for r in valid:
+        conds = r["strategy"].get("conditions", [])
+        l_count = sum(1 for c in conds if get_direction_for_condition(c) == "LONG")
+        s_count = sum(1 for c in conds if get_direction_for_condition(c) == "SHORT")
+        total_dir = l_count + s_count
+
+        if total_dir > 0:
+            rr = r["results"]["rr_per_day"]
+            l_weight = l_count / total_dir
+            s_weight = s_count / total_dir
+
+            global_rr_long_sum += rr * l_weight
+            long_weight_sum += l_weight
+            global_rr_short_sum += rr * s_weight
+            short_weight_sum += s_weight
+
+    global_rr_long = global_rr_long_sum / long_weight_sum if long_weight_sum > 0 else 0.0
+    global_rr_short = global_rr_short_sum / short_weight_sum if short_weight_sum > 0 else 0.0
     global_rr = sum(r["results"]["rr_per_day"] for r in valid) / len(valid)
 
     # Per-condition stats
@@ -78,11 +89,11 @@ def analyze_conditions(all_results: list[dict], remove: bool = True) -> dict:
             "win_rate_sum": 0.0,
         }
 
-    for result in valid:
+    for i, result in enumerate(valid):
         strategy = result["strategy"]
         results = result["results"]
         conds = strategy.get("conditions", [])
-        is_top_10 = id(result) in top_10_set
+        is_top_10 = (i < top_10_cutoff)
 
         for cond in conds:
             if cond in condition_stats:
@@ -143,7 +154,7 @@ def analyze_conditions(all_results: list[dict], remove: bool = True) -> dict:
     # Log the report
     _log_report(
         condition_stats, global_rr, len(valid), removed_conditions,
-        global_rr_long, global_rr_short, len(long_strategies), len(short_strategies),
+        global_rr_long, global_rr_short, int(long_weight_sum), int(short_weight_sum),
         low_efficiency_conditions,
     )
 
@@ -173,8 +184,8 @@ def _log_report(
     logger.info("=" * 60)
     logger.info(f"Strategies analyzed: {total_strategies}")
     logger.info(f"Global avg RR/day: {global_rr:.4f}")
-    logger.info(f"  LONG avg RR/day: {global_rr_long:.4f} ({num_long} strategies)")
-    logger.info(f"  SHORT avg RR/day: {global_rr_short:.4f} ({num_short} strategies)")
+    logger.info(f"  LONG avg RR/day: {global_rr_long:.4f} ({num_long} weighted contributions)")
+    logger.info(f"  SHORT avg RR/day: {global_rr_short:.4f} ({num_short} weighted contributions)")
     logger.info("")
 
     for level, emoji in [

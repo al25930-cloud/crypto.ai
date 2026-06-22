@@ -411,8 +411,16 @@ class TrainingSession:
         score = best.get('score', float('-inf'))
         if score > float('-inf'):
             logger.info(f"  Best score:          {score:.4f}")
-            direction = best.get('direction', '')
-            logger.info(f"  Best strategy:       {best.get('id', 'N/A')} ({direction})")
+            # Show direction mix instead of fixed direction
+            conds = best.get('conditions', [])
+            if conds:
+                from conditions import get_direction_for_condition
+                long_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'LONG')
+                short_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'SHORT')
+                shared_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'SHARED')
+                logger.info(f"  Best strategy:       {best.get('id', 'N/A')} (LONG:{long_conds} SHORT:{short_conds} SHARED:{shared_conds})")
+            else:
+                logger.info(f"  Best strategy:       {best.get('id', 'N/A')}")
             if 'results' in best:
                 r = best['results']
                 logger.info(f"    Win rate:          {r.get('win_rate', 0):.1%}")

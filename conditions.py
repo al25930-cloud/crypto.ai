@@ -146,6 +146,11 @@ def get_condition_description(condition_key: str) -> str:
     return ALL_CONDITIONS.get(condition_key, "Unknown condition")
 
 
+def get_all_condition_pools() -> list[str]:
+    """Return a combined list of all condition names from LONG, SHORT, and SHARED pools."""
+    return list(ALL_CONDITIONS.keys())
+
+
 def get_direction_for_condition(condition_key: str) -> str:
     """Determine which direction(s) a condition belongs to.
 

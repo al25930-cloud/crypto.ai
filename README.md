@@ -35,7 +35,7 @@ cd crypto.ai
 pip install -r requirements.txt
 ```
 
-This installs: ccxt, pandas, numpy, requests, python-dotenv, deap, optuna, pandas_ta.
+This installs: ccxt, pandas, numpy, requests, python-dotenv, optuna, pandas_ta.
 
 ### Install TA-Lib (optional, recommended)
 
@@ -165,23 +165,22 @@ The GA mimics natural selection to explore a huge search space. It takes ~50% of
 **How it works, step by step:**
 
 1. **Create initial population**: Generate 200 completely random strategies. Each strategy has:
-   - A direction (LONG or SHORT)
-   - 7-27 conditions (randomly chosen from the pool of 31 available conditions per direction)
-   - A threshold (0.5-0.7) — how many conditions must be true to enter a trade
-   - A stop-loss (0.3%-3.0%) — maximum loss per trade
-   - A risk-reward ratio (1.0-8.0) — target profit relative to stop-loss
+   - **Mixed-direction conditions**: At least 2 LONG and 2 SHORT conditions from all 53 available (22 LONG + 22 SHORT + 9 SHARED). No fixed direction — direction is decided dynamically at entry time.
+   - 4–34 conditions (randomly chosen, balanced between directions)
+   - A threshold (0.3–0.7) — how many conditions must be true to enter a trade
+   - A stop-loss ATR multiplier (1.0–3.0×) — SL distance = ATR(14) × multiplier
+   - A risk-reward ratio (1.0–5.0) — target profit relative to stop-loss
 
-2. **Evaluate every strategy**: Each strategy is backtested against 6 months of historical data. The backtest simulates: "If I had traded this strategy every time its conditions were met, what would my results be?" Each strategy gets a **score**:
+2. **Evaluate every strategy**: Each strategy is backtested against 12 months of historical data. The backtest simulates: "If I had traded this strategy every time its conditions were met, what would my results be?" Each strategy gets a **score**:
    ```
-   score = rr_per_day x drawdown_penalty x low_trades_penalty
+   score = rr_per_day × drawdown_penalty
    ```
    - **rr_per_day**: Risk-reward earned per trading day (higher = better)
    - **drawdown_penalty**: 1.0 if drawdown < 15%, scales linearly to 0 at 50%
-   - **low_trades_penalty**: 0.7 if avg trades/day <= 1.5, else 1.0
    - Strategies that fail basic quality checks are **disqualified** (score = -inf):
      - Win rate < 35%
      - Max drawdown > 50%
-     - Trade frequency outside 0.5-10 trades/day
+     - Trade frequency < 1.2 or > 10 trades/day
 
 3. **Sort by fitness**: Population sorted by score (highest first). The top strategy is the "best" this generation.
 
@@ -196,13 +195,14 @@ The GA mimics natural selection to explore a huge search space. It takes ~50% of
    Parent A: [cond1, cond2, cond3, cond4]     Parent B: [cond5, cond6, cond7, cond8]
    Child 1:  [cond1, cond2, cond7, cond8]     Child 2:  [cond5, cond6, cond3, cond4]
    ```
-   The first half of conditions comes from one parent, the second half from the other. Numeric parameters (threshold, SL, RR) are averaged. If a child has duplicate conditions, they are removed and replaced with random ones from the pool.
+   The first half of conditions comes from one parent, the second half from the other. Numeric parameters (threshold, SL ATR mult, RR) are averaged. If a child has duplicate conditions, they are removed and replaced. After crossover, the system enforces balance (at least 2 LONG + 2 SHORT conditions) and caps at the maximum condition count.
 
    **d) Mutation (20% chance per individual)** — Randomly change ONE thing:
-   - Swap a condition for a different one from the pool
-   - Nudge threshold by +/-0.05
-   - Nudge stop-loss by +/-0.2%
-   - Nudge risk-reward by +/-0.5
+   - Swap a condition for a different one from any pool (LONG, SHORT, or SHARED)
+   - Nudge threshold by ±0.05
+   - Nudge SL ATR multiplier by ±0.2
+   - Nudge risk-reward by ±0.5
+   After condition mutation, balance is re-enforced.
 
    **e) Re-evaluate** — Backtest all new children, sort by score, and check for a new all-time best.
 
@@ -216,20 +216,20 @@ The GA found promising *regions* of the search space. Now Bayesian optimization 
 
 **How it works:**
 
-1. **Seed with GA results**: The top 10 GA strategies are loaded as the first 10 trials. This gives the optimizer a head start — it already knows what good strategies look like.
+1. **Seed with GA results**: The top 10 GA strategies are used as base strategies. Each Bayesian trial picks one of them as its starting point.
 
-2. **Random exploration (100 trials)**: The first 100 trials explore randomly to build an initial model of the search space.
+2. **Focus on what TPE does best**: Instead of trying to learn which conditions to pick from scratch (an impossibly large search space), the Bayesian optimizer focuses on what it excels at — tuning the **continuous parameters**:
+   - Threshold (entry sensitivity)
+   - SL ATR multiplier (stop loss distance)
+   - Risk-reward ratio (take profit distance)
 
-3. **Bayesian-guided search (until time runs out)**: After the startup phase, Optuna's TPE (Tree-structured Parzen Estimator) model kicks in:
-   - It looks at all past trials and their scores
-   - It learns: "Strategies with these kinds of conditions, this threshold range, this SL/RR tend to score higher"
-   - It suggests new trials that are likely to score well
-   - Each trial it learns more, so suggestions get smarter over time
-   - Continues until the remaining training time is exhausted (up to 10,000 trials as safety cap)
+3. **Light condition exploration**: Each trial also randomly swaps 0-2 conditions for alternatives from the same direction pool. This adds diversity without derailing the TPE model.
 
-4. **Best strategy found**: The optimizer returns the highest-scoring strategy it found.
+4. **Bayesian-guided search (until time runs out)**: Optuna's TPE model learns which combinations of (base strategy × threshold × SL × RR) score highest and focuses the search there. Continues until the remaining training time is exhausted (up to 10,000 trials as safety cap).
 
-**Why two phases?** The GA is good at exploring a huge space broadly (global search), but it's slow and imprecise. Bayesian optimization is good at refining a narrow region precisely (local search), but it needs good starting points. Combining them gives you both breadth and depth.
+5. **Best strategy found**: The optimizer returns the highest-scoring strategy it found.
+
+**Why two phases?** The GA excels at combinatorics (which conditions work together), while Bayesian optimization excels at continuous tuning (threshold, SL, RR). By splitting responsibilities — GA handles conditions, Bayesian handles numeric parameters — each phase does what it's best at. This is much more effective than having Bayesian try to learn both from scratch.
 
 ---
 
@@ -263,19 +263,19 @@ This focuses the Bayesian search on the most promising conditions, improving eff
 The **score** is the single metric the entire system optimizes for. Every decision — which strategies survive in the GA, which ones the Bayesian optimizer focuses on, which strategy gets saved as "best" — is based on this score.
 
 ```
-score = rr_per_day x drawdown_penalty x low_trades_penalty
+score = rr_per_day × drawdown_penalty × timeout_penalty
 ```
 
 | Component | What it measures | Value range |
 |---|---|---|
 | **rr_per_day** | Risk-reward earned per trading day | 0 to ~5 (higher = better) |
 | **drawdown_penalty** | Penalizes strategies with high drawdown | 0.0 (50% drawdown) to 1.0 (<15% drawdown) |
-| **low_trades_penalty** | Penalizes strategies that rarely trade | 0.7 (<=1.5 trades/day) or 1.0 |
+| **timeout_penalty** | Penalizes strategies that close too many trades via timeout | 0.85 (>25% timeouts) or 1.0 (normal) |
 
 **Disqualified strategies** get score = -inf (instantly lose to everything). A strategy is disqualified if:
 - Win rate < 35%
 - Max drawdown > 50%
-- Average trades/day outside 0.5-10
+- Average trades/day < 1.2 or > 10
 
 **What [NEW BEST!] means in the logs**: It appears when a single strategy in the current generation scores higher than any strategy seen in all previous generations. It does NOT mean the average population improved — it means a new champion was found.
 
@@ -302,7 +302,7 @@ Training Start
     |-- Compute all 53 conditions (pre-cached for speed)
     |
     |-- PHASE 1: Genetic Algorithm (~50% of time)
-    |   |-- Gen 0: 200 random strategies
+    |   |-- Gen 0: 200 random mixed-direction strategies
     |   |-- Gen 1-N: Evolve via selection + crossover + mutation
     |   +-- Top 10 passed to Phase 2
     |
@@ -312,8 +312,9 @@ Training Start
     |   +-- Log removed/weighted conditions
     |
     |-- PHASE 2: Bayesian Optimization (~50% of time)
-    |   |-- Seed with GA's top 10
-    |   |-- 100 random trials (build initial model)
+    |   |-- Seed with GA's top 10 as base strategies
+    |   |-- TPE optimizes threshold, SL ATR mult, RR
+    |   |-- Light condition mutation (0-2 swaps per trial)
     |   +-- TPE-guided trials (until time runs out)
     |
     +-- Compare with existing best, save if better
@@ -326,41 +327,41 @@ Training Start
 ```
 Training started | Method: ga_bayesian | Symbol: BTC/USDT | Duration: 30 min
   Objective: Find the strategy with the highest score.
-  Score = rr_per_day x drawdown_penalty x low_trades_penalty.
-  Disqualified if: win_rate < 35%, max_drawdown > 50%, or avg_trades/day outside 0.5-10.
+  Score = rr_per_day × drawdown_penalty.
+  Disqualified if: win_rate < 35%, max_drawdown > 50%, trades/day < 1.2 or > 10.
 
 Phase 1: Genetic Algorithm (global search -- evolve strategies over generations)
 GA: Starting | pop=200, time_budget=900s (15.0m), max_gen=200, cx=0.8, mut=0.2, elite=5
-  Score = rr_per_day * drawdown_penalty * low_trades_penalty. Higher = better.
-GA Gen 0 | Best score: 1.85 | Avg score: 1.12 | Pop: 200 | Elapsed: 30s
-GA Gen 1 | Best score: 1.92 | Avg score: 1.18 | Tested: 400 | Elapsed: 73s
-GA Gen 5 | Best score: 2.10 | Avg score: 1.34 | Tested: 1200 | Elapsed: 180s [NEW BEST!]
+  Score = rr_per_day * drawdown_penalty. Higher = better.
+GA Gen 0 | Best score: 0.2280 | Avg score: 0.12 | Pop: 200 | Elapsed: 30s
+GA Gen 5 | Best score: 0.3800 | Avg score: 0.21 | Tested: 1200 | Elapsed: 180s [NEW BEST!]
 ...
-GA: Finished | Best score: 2.45 | 25 generations | Elapsed: 870s | Strategies tested: 4500 | Speed: 5.2 strats/s | Passing top 10 to Bayesian optimizer.
+GA: Finished | Best score: 0.5780 | 24 generations | Elapsed: 310s | Strategies tested: 4095 | Speed: 13.2 strats/s | Passing top 10 to Bayesian optimizer.
 
 [EFFICIENCY] GA phase complete. Analyzing condition efficiency...
-[EFFICIENCY] Removing 16 conditions (efficiency < 0.3) before Bayesian.
-[EFFICIENCY] 4 conditions flagged low-efficiency (0.5x weight, eff 0.3-0.5)
+[EFFICIENCY] All conditions performing well. No removals.
 
 Phase 2: Bayesian Optimization (local refinement -- focus on promising regions)
-Bayesian: Starting | timeout=930s (15.5m), max_trials=10000, startup=100
-  Each trial generates a strategy with random conditions, threshold, stop-loss, ...
-Bayesian: Seeded 10 strategies from GA.
+Bayesian: Starting | timeout=278s (4.6m), max_trials=10000, startup=20
+Bayesian: Enqueued 10 seed trials.
 ...
-Bayesian: Finished | Best score: 2.68 | 2000 trials | Elapsed: 930s | Speed: 2.1 trials/s
+Bayesian: Finished | Best score: 0.5780 | 1012 trials | Elapsed: 274s | Speed: 3.7 trials/s
 
+============================================================
 Training finished.
-  Best score:          2.6800
-  Best strategy:       strat_abc123 (LONG)
-    Win rate:          52.0%
-    RR/day:            2.4500
-    Max drawdown:      12.3%
-    Valid trades:      142
 
-  Total strategies tested: 6500
-  Time elapsed:        1800s (30.0m)
-  Average:             3.6 strats/sec
+  Best score:          0.5780
+  Best strategy:       strat_64b6706e (LONG:7 SHORT:6 SHARED:1)
+    Win rate:          42.0%
+    RR/day:            0.5780
+    Max drawdown:      14.6%
+    Valid trades:      274
+
+  Total strategies tested: 5107
+  Time elapsed:        600s (10.0m)
+  Average:             8.5 strats/sec
   New best strategy saved to models/best_strategy.json
+============================================================
 ```
 
 ### CLI options
@@ -406,34 +407,6 @@ You can also manually restore removed conditions by deleting `models/removed_con
 python validation.py --symbol BTC/USDT --period 12
 ```
 
-### What you'll see
-
-```
-============================================================
-VALIDATION RESULTS
-============================================================
-  Period:          2024-06-19 to 2025-12-19
-  Strategy:        strat_GA_BO_001
-
-  Total trades:    156
-  Valid trades:    142
-  Invalid trades:  14 (too short)
-
-  Win rate:        48.5%  ✅ PASS (threshold: ≥35%)
-  Profit factor:   1.82   ✅ PASS (threshold: ≥1.3)
-  Sharpe ratio:    2.1500
-  Max drawdown:    18.3%  ✅ PASS (threshold: ≤50%)
-  RR/day:          2.4500
-
-  Exit breakdown:
-    SL hits:       73
-    TP hits:       69
-    Timeouts:      14
-
-  ✅ ALL ACCEPTANCE CRITERIA PASSED
-============================================================
-```
-
 ### Acceptance criteria
 
 | Metric | Threshold | What it means |
@@ -464,9 +437,10 @@ python live_signal.py --symbol BTC/USDT
 1. **Startup**: Loads the best strategy from `models/best_strategy.json`
 2. **Missed signal check**: Scans for signals that fired while you were offline
 3. **Main loop**: Every 15 minutes (at candle close), evaluates the strategy conditions
-4. **Signal detection**: If conditions are met, sends a Discord alert with entry price, SL, TP
-5. **Exit tracking**: Monitors the open position for SL/TP hits or 48-hour timeout
-6. **Cooldown**: After any exit, waits 4 candles (1 hour) before looking for new signals
+4. **Direction decision**: Counts how many LONG vs SHORT conditions are true, determines direction using `MIN_DIRECTION_STRENGTH` (60%) and `DIRECTION_RATIO` (1.3×)
+5. **Signal detection**: If conditions are met and direction is clear, sends a Discord alert with entry price, SL, TP
+6. **Exit tracking**: Monitors the open position for SL/TP hits or 24-hour timeout
+7. **Cooldown**: After any exit, waits 4 candles (1 hour) before looking for new signals
 
 ### Discord alerts you'll receive
 
@@ -476,13 +450,13 @@ python live_signal.py --symbol BTC/USDT
 
 Action: LONG
 Entry: $67,200.00
-Stop Loss: $66,384.00 (1.2%)
-Take Profit: $68,880.00 (2.5 RR)
-Confidence: 72% (6/10 conditions met)
+Stop Loss: $65,856.00 (2.0%)
+Take Profit: $71,568.00 (6.5% — 3.25 RR)
+Direction strength: LONG 80% vs SHORT 30%
 
-Strategy ID: strat_GA_BO_001
-RR/day: 2.68
-Win rate (historical): 52%
+Strategy ID: strat_64b6706e
+RR/day: 0.5780
+Win rate (historical): 42%
 
 ⚠️ This is a signal. Execute manually with your own position size.
 ```
@@ -493,9 +467,9 @@ Win rate (historical): 52%
 
 Result: TAKE PROFIT ✅
 Entry: $67,200.00
-Exit: $68,880.00
-Profit: +2.5% (+1.0 RR)
-Duration: 2h 15m
+Exit: $71,568.00
+Profit: +6.5% (+3.25 RR)
+Duration: 6h 30m
 ```
 
 **Cooldown expired:**
@@ -513,8 +487,8 @@ The bot is now actively monitoring for new signals.
 Direction: LONG
 Status: EXPIRED
 Entry: $67,200.00
-Stop Loss: $66,384.00
-Take Profit: $68,880.00
+Stop Loss: $65,856.00
+Take Profit: $71,568.00
 
 ℹ️ Reported for your information only. Do NOT trade this signal.
 ```
@@ -544,45 +518,80 @@ Here's what each log line means:
 | **Pop** | Population size (number of strategies in each generation). |
 | **[NEW BEST!]** | A new all-time best score was found this generation. |
 | **Passing top 10** | The top 10 GA strategies are passed as starting points for the Bayesian optimizer. |
-| **startup** | Number of random trials before the Bayesian TPE model kicks in (exploration phase). |
+| **startup** | Number of random trials before the Bayesian TPE model kicks in (low because GA seeds are strong). |
 | **time_budget** | Maximum time allocated to the GA phase (~50% of total training time). |
 | **timeout** | Maximum time allocated to the Bayesian phase (remaining time after GA + efficiency analysis). |
 | **Elapsed** | Wall-clock time since the phase started. |
 | **Speed** | Strategies tested per second. |
+| **LONG:X SHORT:Y SHARED:Z** | Direction mix of the best strategy's conditions (e.g., LONG:7 SHORT:6 SHARED:1). |
 
 The **score** is the primary metric the system optimizes for. It's calculated as:
 
 ```
-score = rr_per_day x drawdown_penalty x low_trades_penalty
+score = rr_per_day × drawdown_penalty
 ```
 
 - **rr_per_day**: Risk-reward earned per trading day (higher = better)
 - **drawdown_penalty**: 1.0 if drawdown < 15%, scales linearly to 0 at 50%
-- **low_trades_penalty**: 0.7 if avg trades/day <= 1.5, else 1.0
-- **Disqualified** (score = -inf): win_rate < 35%, drawdown > 50%, or trades/day outside 0.5-10
+- **Disqualified** (score = -inf): win_rate < 35%, drawdown > 50%, or trades/day outside 1.2–10
 
 ---
 
 ## Understanding the Output
 
+### Dynamic Direction (how entries work)
+
+Strategies no longer have a fixed direction (LONG or SHORT). Instead, each strategy contains conditions from **both** direction pools. At each entry check (backtest and live):
+
+1. Count how many LONG conditions are true → compute `long_strength` (true / total LONG)
+2. Count how many SHORT conditions are true → compute `short_strength` (true / total SHORT)
+3. If `long_strength >= 0.60` AND `long_strength > short_strength × 1.3` → enter **LONG**
+4. If `short_strength >= 0.60` AND `short_strength > long_strength × 1.3` → enter **SHORT**
+5. Otherwise → **HOLD** (no clear consensus, wait for next candle)
+
+Once in a position, all signals are ignored until the trade exits via SL, TP, or timeout. No mid-trade flipping.
+
+The thresholds (`MIN_DIRECTION_STRENGTH=0.60` and `DIRECTION_RATIO=1.3`) are fixed system-wide in `config.py` — they are NOT evolved per strategy. This prevents the optimizer from finding strategies that enter on weak or ambiguous signals.
+
+### ATR-Based Stop Loss and Take Profit
+
+Stop loss and take profit are computed using the ATR (Average True Range) indicator, which adapts to market volatility:
+
+```
+SL distance = ATR(14) × sl_atr_mult
+TP distance = SL distance × rr_ratio
+```
+
+For a LONG trade:
+- SL = entry_price - (ATR × sl_atr_mult)
+- TP = entry_price + (ATR × sl_atr_mult × rr_ratio)
+
+For a SHORT trade:
+- SL = entry_price + (ATR × sl_atr_mult)
+- TP = entry_price - (ATR × sl_atr_mult × rr_ratio)
+
+The ATR changes based on recent volatility, so the same multiplier produces different SL/TP distances depending on market conditions. For example, with `sl_atr_mult=2.75`: if BTC ATR(14) is $500, the SL is $1,375 (1.4% of a $100k entry); if ATR is $1,500, the SL is $4,125 (4.1%). The optimizer finds the multiplier that works best for the current volatility regime.
+
+There are **no min/max SL percentage guardrails** — the system trusts the ATR multiplier to adapt naturally, and the disqualification criteria (min trades/day, max drawdown, win rate floor) automatically filter out strategies with bad SL distances.
+
 ### What is RR/day?
 
-**RR/day** (Risk-Reward per Day) is the primary metric. It measures how much risk-reward the strategy earns per trading day. A RR/day of 2.0 means the strategy earns 2× its risk per day on average.
+**RR/day** (Risk-Reward per Day) is the primary metric. It measures how much risk-reward the strategy earns per trading day. A RR/day of 0.5 means the strategy earns 0.5× its risk per day on average.
 
 ### What is the score?
 
 ```
-score = rr_per_day × low_trades_penalty × drawdown_penalty
+score = rr_per_day × drawdown_penalty × timeout_penalty
 ```
 
-**Step 1 — Low trade frequency penalty:**
-- If avg trades/day ≤ 1.5: rr_per_day is multiplied by 0.7 (30% penalty)
-- This filters out strategies that rarely trade, since low sample sizes are unreliable
-
-**Step 2 — Drawdown penalty:**
+**Drawdown penalty:**
 - If max drawdown < 15%: no penalty (penalty = 1.0)
 - If max drawdown 15%–50%: linear penalty scaling down to 0
 - If max drawdown > 50%: strategy is disqualified
+
+**Timeout penalty:**
+- If >25% of exits are timeouts: score is multiplied by 0.85 (15% penalty)
+- This discourages strategies that can't hit SL or TP within 24 hours, which indicates poor signal quality
 
 ### What are "invalid trades"?
 
@@ -611,34 +620,43 @@ All parameters are in `config.py`. Here's the complete list:
 | `TRAINING_PERIOD_MONTHS` | `12` | Months of historical data for training |
 | `TRAINING_METHOD` | `"ga_bayesian"` | `"ga_bayesian"` or `"random"` |
 
-### Strategy Generation (percentage-based)
+### Strategy Generation
 | Parameter | Default | Description |
 |---|---|---|
-| `MIN_CONDITION_PERCENTAGE` | `0.25` | Minimum conditions as % of pool (25% of 31 = ~8) |
-| `MAX_CONDITION_PERCENTAGE` | `0.90` | Maximum conditions as % of pool (90% of 31 = ~28) |
-| `MIN_CONDITIONS_ABSOLUTE` | `3` | Safety floor -- never go below 3 conditions |
-| `MIN_THRESHOLD` | `0.5` | Minimum entry threshold (50%) |
+| `MAX_CONDITION_PERCENTAGE` | `0.65` | Maximum conditions as % of pool (65% of 53 = ~34) |
+| `MIN_CONDITIONS_ABSOLUTE` | `4` | Hard floor — never go below 4 conditions |
+| `MIN_THRESHOLD` | `0.3` | Minimum entry threshold (30%) |
 | `MAX_THRESHOLD` | `0.7` | Maximum entry threshold (70%) |
-| `MIN_SL` | `0.3` | Minimum stop-loss (%) |
-| `MAX_SL` | `3.0` | Maximum stop-loss (%) |
+| `MIN_SL_ATR_MULT` | `1.0` | Minimum ATR multiplier for stop loss |
+| `MAX_SL_ATR_MULT` | `3.0` | Maximum ATR multiplier for stop loss |
 | `MIN_RR` | `1.0` | Minimum risk-reward ratio |
-| `MAX_RR` | `8.0` | Maximum risk-reward ratio |
+| `MAX_RR` | `5.0` | Maximum risk-reward ratio |
+
+### Dynamic Direction Thresholds
+| Parameter | Default | Description |
+|---|---|---|
+| `MIN_DIRECTION_STRENGTH` | `0.60` | Minimum true-condition ratio for dominant direction (60%) |
+| `DIRECTION_RATIO` | `1.3` | Dominant direction must be ≥1.3× stronger than opposite |
+
+These are **fixed system-wide thresholds** — not evolved per strategy. They ensure entries only happen when there's a clear directional consensus. Users can adjust them globally in `config.py`.
 
 ### Disqualification
 | Parameter | Default | Description |
 |---|---|---|
 | `MIN_WIN_RATE` | `0.35` | Minimum win rate (35%) |
 | `MAX_DRAWDOWN` | `0.50` | Maximum drawdown (50%) |
-| `MIN_TRADES_PER_DAY` | `0.5` | Minimum trades per day |
+| `MIN_TRADES_PER_DAY` | `1.2` | Minimum trades per day |
 | `MAX_TRADES_PER_DAY` | `10` | Maximum trades per day |
-| `LOW_TRADES_THRESHOLD` | `1.5` | If avg trades/day ≤ this, apply penalty |
-| `LOW_TRADES_PENALTY` | `0.7` | Score multiplier for low-frequency strategies (70%) |
+| `DRAWDOWN_PENALTY_START` | `0.15` | Drawdown level where penalty begins (15%) |
+| `DRAWDOWN_PENALTY_END` | `0.50` | Drawdown level where penalty reaches 0 (50%) |
+| `TIMEOUT_PENALTY_THRESHOLD` | `0.25` | If >25% of exits are timeouts, apply penalty |
+| `TIMEOUT_PENALTY` | `0.15` | 15% score reduction for excessive timeouts |
 
 ### Trade Rules
 | Parameter | Default | Description |
 |---|---|---|
 | `MIN_TRADE_DURATION_MINUTES` | `45` | Trades shorter than this are "invalid" |
-| `MAX_TRADE_DURATION_HOURS` | `48` | Trades open longer than this are force-closed |
+| `MAX_TRADE_DURATION_HOURS` | `24` | Trades open longer than this are force-closed |
 | `COOLDOWN_CANDLES` | `4` | Candles to wait after an exit (1 hour on 15m) |
 | `TRADING_FEE_PCT` | `0.1` | Trading fee per side (0.1% = Binance standard) |
 
@@ -656,7 +674,16 @@ All parameters are in `config.py`. Here's the complete list:
 | Parameter | Default | Description |
 |---|---|---|
 | `BAYESIAN_MAX_TRIALS` | `10000` | Safety cap on trials (timeout is the real limiter) |
-| `BAYESIAN_STARTUP_TRIALS` | `100` | Random trials before Bayesian TPE model kicks in |
+| `BAYESIAN_STARTUP_TRIALS` | `20` | Random trials before Bayesian TPE model kicks in (low because GA seeds are strong) |
+
+### Efficiency Thresholds
+| Parameter | Default | Description |
+|---|---|---|
+| `EFFICIENCY_CRITICAL` | `0.3` | Conditions below this are auto-removed |
+| `EFFICIENCY_ALERT` | `0.5` | Conditions below this get 0.5× selection weight |
+| `EFFICIENCY_WARNING` | `0.7` | Warning level for efficiency report |
+| `EFFICIENCY_STRONG` | `1.3` | Strong performer threshold |
+| `MIN_POOL_SIZE` | `20` | Minimum conditions per direction; refuse removals below this |
 
 ---
 
@@ -680,17 +707,17 @@ All parameters are in `config.py`. Here's the complete list:
 | File | Description |
 |---|---|
 | `config.py` | All configuration parameters |
-| `conditions.py` | 53 technical conditions (LONG, SHORT, shared) |
+| `conditions.py` | 53 technical conditions (22 LONG, 22 SHORT, 9 SHARED) |
 | `indicators.py` | Indicator computation (TA-Lib / pandas_ta) |
 | `data_fetcher.py` | OHLCV data download from Binance via ccxt |
-| `backtest.py` | Backtest engine with mark-to-market drawdown |
-| `strategy.py` | Strategy generation, scoring, save/load |
+| `backtest.py` | Backtest engine with ATR-based SL/TP and dynamic direction |
+| `strategy.py` | Mixed-direction strategy generation, scoring, save/load |
 | `training.py` | Training loop (GA+Bayesian or random) |
-| `genetic_optimizer.py` | Genetic Algorithm implementation |
-| `bayesian_optimizer.py` | Bayesian Optimization via Optuna |
+| `genetic_optimizer.py` | Genetic Algorithm with balance enforcement |
+| `bayesian_optimizer.py` | Bayesian Optimization via Optuna with balance enforcement |
 | `efficiency.py` | Condition efficiency analysis |
 | `validation.py` | Full backtest validation with acceptance criteria |
-| `live_signal.py` | Live signal generator with state management |
+| `live_signal.py` | Live signal generator with dynamic direction and state management |
 | `discord_bot.py` | Discord webhook sender |
 
 ---
@@ -703,6 +730,10 @@ You need to run training before validation or live mode:
 ```bash
 python training.py --symbol BTC/USDT --method random --minutes 2
 ```
+
+### "Strategy has deprecated 'direction' field."
+
+The system was updated to use dynamic direction (bi-directional strategies). Old strategies with a fixed `direction` field are incompatible. **You must retrain.** Delete `models/best_strategy.json` and run training again.
 
 ### "TA-Lib not found. Using pandas_ta fallback."
 

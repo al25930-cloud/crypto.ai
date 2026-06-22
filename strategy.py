@@ -16,24 +16,34 @@ from pathlib import Path
 from typing import Optional
 
 import config
-from conditions import get_condition_pool, get_condition_count_range
+from conditions import (
+    get_condition_pool,
+    get_condition_count_range,
+    get_direction_for_condition,
+    get_all_condition_pools,
+    ALL_CONDITIONS,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def generate_random_strategy(direction: Optional[str] = None) -> dict:
-    """Generate a random strategy with random conditions, threshold, SL, and RR.
+    """Generate a random strategy with mixed-direction conditions.
 
     Args:
-        direction: "LONG" or "SHORT". If None, chosen randomly with 50/50 odds.
+        direction: DEPRECATED. If provided, restricts to that direction's pool
+            for backward compatibility. If None (default), picks from all pools.
 
     Returns:
-        Strategy dict with keys: id, conditions, threshold, sl, rr, direction.
+        Strategy dict with keys: id, conditions, threshold, sl_atr_mult, rr.
+        No 'direction' field — direction is decided dynamically at entry time.
     """
-    if direction is None:
-        direction = random.choice(["LONG", "SHORT"])
-
-    pool = get_condition_pool(direction)
+    if direction is not None:
+        # Backward-compat path (for random search mode or external callers)
+        pool = get_condition_pool(direction)
+    else:
+        # Mixed-direction: pick from all 53 conditions
+        pool = get_all_condition_pools()
 
     # Load removed conditions and exclude them
     removed = _load_removed_conditions()
@@ -51,7 +61,33 @@ def generate_random_strategy(direction: Optional[str] = None) -> dict:
 
     min_count, max_count = get_condition_count_range(len(pool))
     num_conditions = random.randint(min_count, max_count)
-    conditions = random.sample(pool, min(num_conditions, len(pool)))
+
+    # Ensure at least 2 LONG and 2 SHORT conditions
+    long_pool = [c for c in pool if get_direction_for_condition(c) == "LONG"]
+    short_pool = [c for c in pool if get_direction_for_condition(c) == "SHORT"]
+
+    if len(long_pool) < 2 or len(short_pool) < 2:
+        # Can't satisfy balance requirement — fall back to old behavior
+        direction = random.choice(["LONG", "SHORT"])
+        pool = get_condition_pool(direction)
+        pool = [c for c in pool if c not in removed]
+        num_conditions = random.randint(min_count, max_count)
+        conditions = random.sample(pool, min(num_conditions, len(pool)))
+    else:
+        long_conditions = random.sample(long_pool, 2)
+        short_conditions = random.sample(short_pool, 2)
+
+        # Fill remaining slots from any pool
+        remaining = num_conditions - 4
+        already_selected = set(long_conditions + short_conditions)
+        available = [c for c in pool if c not in already_selected]
+
+        if remaining > 0 and available:
+            extra_conditions = random.sample(available, min(remaining, len(available)))
+        else:
+            extra_conditions = []
+
+        conditions = long_conditions + short_conditions + extra_conditions
 
     threshold = round(random.uniform(config.MIN_THRESHOLD, config.MAX_THRESHOLD), 4)
     sl_atr_mult = round(random.uniform(config.MIN_SL_ATR_MULT, config.MAX_SL_ATR_MULT), 2)
@@ -63,7 +99,7 @@ def generate_random_strategy(direction: Optional[str] = None) -> dict:
         "threshold": threshold,
         "sl_atr_mult": sl_atr_mult,
         "rr": rr,
-        "direction": direction,
+        # No "direction" field — direction is dynamic
     }
 
 
@@ -103,7 +139,16 @@ def score_strategy(results: dict) -> float:
         )
         penalty = max(0.0, penalty)  # Clamp to 0
 
-    return rr_per_day * penalty
+    score = rr_per_day * penalty
+
+    # Timeout penalty: reduce score if too many exits are timeouts
+    total_exits = results.get("exit_sl_count", 0) + results.get("exit_tp_count", 0) + results.get("exit_timeout_count", 0)
+    if total_exits > 0:
+        timeout_ratio = results.get("exit_timeout_count", 0) / total_exits
+        if timeout_ratio > config.TIMEOUT_PENALTY_THRESHOLD:
+            score *= (1.0 - config.TIMEOUT_PENALTY)
+
+    return score
 
 
 def is_disqualified(results: dict) -> tuple[bool, str]:

@@ -41,7 +41,7 @@ TRAINING_METHOD = "ga_bayesian"  # "random" or "ga_bayesian"
 
 # === Strategy Generation ===
 MIN_CONDITION_PERCENTAGE = 0.25  # INACTIVE (superseded by MIN_CONDITIONS_ABSOLUTE)
-MAX_CONDITION_PERCENTAGE = 0.90  # 90% of the pool — ACTIVE (used for max condition count)
+MAX_CONDITION_PERCENTAGE = 0.65  # 65% of the pool — ACTIVE (hard cap at 35 conditions with 53 total)
 MIN_CONDITIONS_ABSOLUTE = 4      # ACTIVE — Hard floor (never go below 4 conditions)
 MIN_THRESHOLD = 0.3
 MAX_THRESHOLD = 0.7
@@ -49,6 +49,12 @@ MIN_SL_ATR_MULT = 1.0   # Minimum ATR multiplier for stop loss
 MAX_SL_ATR_MULT = 3.0   # Maximum ATR multiplier for stop loss
 MIN_RR = 1.0
 MAX_RR = 5.0
+
+# === Dynamic Direction Thresholds ===
+# Fixed system-wide thresholds for bi-directional strategies.
+# Not evolved per-strategy — prevents overfitting to ambiguous entries.
+MIN_DIRECTION_STRENGTH = 0.60   # Minimum true-condition ratio for dominant direction
+DIRECTION_RATIO = 1.3           # Dominant must be >= 1.3× stronger than opposite
 
 # === GA Parameters ===
 GA_POPULATION_SIZE = 200
@@ -60,7 +66,7 @@ GA_CROSSOVER_PROB = 0.8
 
 # === Bayesian Parameters ===
 BAYESIAN_MAX_TRIALS = 10000      # Safety cap for timeout-based Bayesian (rarely hit)
-BAYESIAN_STARTUP_TRIALS = 100    # Random trials before TPE model kicks in
+BAYESIAN_STARTUP_TRIALS = 20     # Random trials before TPE model kicks in (low because GA seeds are strong)
 
 # === Qualification / Disqualification ===
 MIN_TRADES_PER_DAY = 1.2
@@ -69,6 +75,10 @@ MIN_WIN_RATE = 0.35  # 35%
 MAX_DRAWDOWN = 0.50  # 50%
 DRAWDOWN_PENALTY_START = 0.15  # 15%
 DRAWDOWN_PENALTY_END = 0.50  # 50%
+
+# === Timeout Penalty ===
+TIMEOUT_PENALTY_THRESHOLD = 0.25   # If >25% of exits are timeouts, apply penalty
+TIMEOUT_PENALTY = 0.15             # 15% score reduction for excessive timeouts
 
 # === Trade Parameters ===
 MIN_TRADE_DURATION_MINUTES = 45
