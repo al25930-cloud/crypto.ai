@@ -27,13 +27,13 @@ class Individual:
     evaluated-but-disqualified).
     """
 
-    __slots__ = ("direction", "conditions", "threshold", "sl", "rr", "fitness")
+    __slots__ = ("direction", "conditions", "threshold", "sl_atr_mult", "rr", "fitness")
 
-    def __init__(self, direction: str, conditions: list, threshold: float, sl: float, rr: float):
+    def __init__(self, direction: str, conditions: list, threshold: float, sl_atr_mult: float, rr: float):
         self.direction = direction
         self.conditions = list(conditions)  # always a fresh copy
         self.threshold = threshold
-        self.sl = sl
+        self.sl_atr_mult = sl_atr_mult
         self.rr = rr
         self.fitness: Optional[float] = None  # None = not yet evaluated
 
@@ -44,25 +44,21 @@ class Individual:
             "direction": self.direction,
             "conditions": list(self.conditions),
             "threshold": self.threshold,
-            "sl": self.sl,
+            "sl_atr_mult": self.sl_atr_mult,
             "rr": self.rr,
         }
 
     def copy(self) -> "Individual":
         """Create a deep copy preserving fitness."""
-        ind = Individual(
-            self.direction, list(self.conditions),
-            self.threshold, self.sl, self.rr,
+        ind = Individual(            self.direction, list(self.conditions),
+            self.threshold, self.sl_atr_mult, self.rr,
         )
         ind.fitness = self.fitness
         return ind
 
     def copy_without_fitness(self) -> "Individual":
         """Create a deep copy with fitness reset to None (needs re-evaluation)."""
-        return Individual(
-            self.direction, list(self.conditions),
-            self.threshold, self.sl, self.rr,
-        )
+        return Individual(self.direction, list(self.conditions), self.threshold, self.sl_atr_mult, self.rr,)
 
 
 def _create_random_individual(direction: Optional[str] = None) -> Individual:
@@ -72,7 +68,7 @@ def _create_random_individual(direction: Optional[str] = None) -> Individual:
         direction=strat["direction"],
         conditions=strat["conditions"],
         threshold=strat["threshold"],
-        sl=strat["sl"],
+        sl_atr_mult=strat["sl_atr_mult"],
         rr=strat["rr"],
     )
 
@@ -110,12 +106,12 @@ def _mate(ind1: Individual, ind2: Individual) -> tuple[Individual, Individual]:
 
     # Numeric parameters: average
     child_threshold = round((ind1.threshold + ind2.threshold) / 2, 4)
-    child_sl = round((ind1.sl + ind2.sl) / 2, 2)
+    child_sl_atr_mult = round((ind1.sl_atr_mult + ind2.sl_atr_mult) / 2, 2)
     child_rr = round((ind1.rr + ind2.rr) / 2, 2)
 
     # New individuals have fitness=None (need evaluation)
-    new_ind1 = Individual(ind1.direction, child1_conds, child_threshold, child_sl, child_rr)
-    new_ind2 = Individual(ind2.direction, child2_conds, child_threshold, child_sl, child_rr)
+    new_ind1 = Individual(ind1.direction, child1_conds, child_threshold, child_sl_atr_mult, child_rr)
+    new_ind2 = Individual(ind2.direction, child2_conds, child_threshold, child_sl_atr_mult, child_rr)
     return new_ind1, new_ind2
 
 
@@ -132,7 +128,7 @@ def _mutate(ind: Individual, mutation_prob: float = config.GA_MUTATION_PROB) -> 
     # Apply mutation — create a copy WITHOUT fitness (must re-evaluate)
     new_ind = ind.copy_without_fitness()
 
-    mutation_type = rng.choice(["condition", "threshold", "sl", "rr"])
+    mutation_type = rng.choice(["condition", "threshold", "sl_atr_mult", "rr"])
 
     if mutation_type == "condition":
         if len(new_ind.conditions) > 0:
@@ -149,10 +145,10 @@ def _mutate(ind: Individual, mutation_prob: float = config.GA_MUTATION_PROB) -> 
         new_ind.threshold = round(
             max(config.MIN_THRESHOLD, min(config.MAX_THRESHOLD, new_ind.threshold + delta)), 4
         )
-    elif mutation_type == "sl":
+    elif mutation_type == "sl_atr_mult":
         delta = rng.choice([-0.2, 0.2])
-        new_ind.sl = round(
-            max(config.MIN_SL, min(config.MAX_SL, new_ind.sl + delta)), 2
+        new_ind.sl_atr_mult = round(
+            max(config.MIN_SL_ATR_MULT, min(config.MAX_SL_ATR_MULT, new_ind.sl_atr_mult + delta)), 2
         )
     elif mutation_type == "rr":
         delta = rng.choice([-0.5, 0.5])
@@ -316,7 +312,7 @@ class GeneticOptimizer:
             logger.warning("GA: No valid strategy found during training.")
             return {
                 "id": "none", "conditions": [], "threshold": 0.5,
-                "sl": 1.0, "rr": 2.0, "direction": "LONG",
+                "sl_atr_mult": 1.5, "rr": 2.0, "direction": "LONG",
                 "score": float("-inf"), "method": "ga",
             }, []
 

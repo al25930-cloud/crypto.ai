@@ -107,7 +107,7 @@ def get_condition_count_range(pool_size: int) -> tuple:
         Tuple of (min_count, max_count).
     """
     import config
-    min_count = max(config.MIN_CONDITIONS_ABSOLUTE, int(pool_size * config.MIN_CONDITION_PERCENTAGE))
+    min_count = config.MIN_CONDITIONS_ABSOLUTE  # Hard floor: always 4
     max_count = min(pool_size, int(pool_size * config.MAX_CONDITION_PERCENTAGE))
     # Ensure min <= max
     min_count = min(min_count, max_count)

@@ -161,7 +161,7 @@ class LiveSignalGenerator:
         logger.info(f"  Direction: {self.strategy['direction']}")
         logger.info(f"  Conditions: {len(self.strategy['conditions'])}")
         logger.info(f"  Threshold: {self.strategy['threshold']}")
-        logger.info(f"  SL: {self.strategy['sl']}%, RR: {self.strategy['rr']}")
+        logger.info(f"  SL_ATR_MULT: {self.strategy.get('sl_atr_mult', self.strategy.get('sl', 'N/A'))}, RR: {self.strategy['rr']}")
         logger.info(f"Symbol: {self.symbol} | Timeframe: {self.timeframe}")
 
         # Check for missed signals
@@ -237,15 +237,17 @@ class LiveSignalGenerator:
 
         if satisfaction >= strategy["threshold"]:
             direction = strategy["direction"]
-            sl_pct = strategy["sl"]
+            sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))
             rr = strategy["rr"]
+            atr_value = float(latest.get("atr_14", 0))
+            sl_distance = atr_value * sl_atr_mult
 
             if direction == "LONG":
-                sl_price = price * (1.0 - sl_pct / 100.0)
-                tp_price = price * (1.0 + sl_pct * rr / 100.0)
+                sl_price = price - sl_distance
+                tp_price = price + sl_distance * rr
             else:
-                sl_price = price * (1.0 + sl_pct / 100.0)
-                tp_price = price * (1.0 - sl_pct * rr / 100.0)
+                sl_price = price + sl_distance
+                tp_price = price - sl_distance * rr
 
             # Enter position
             self.state.enter_position(price, sl_price, tp_price, direction, strategy["id"])
@@ -296,7 +298,7 @@ class LiveSignalGenerator:
         max_duration = timedelta(hours=config.MAX_TRADE_DURATION_HOURS)
         if duration >= max_duration:
             pnl_pct = self._calc_pnl(entry_price, current_price, direction)
-            rr = self._calc_rr(entry_price, current_price, direction, self.strategy["sl"])
+            rr = self._calc_rr(entry_price, current_price, direction, self.state.sl)
             logger.info(f"Timeout exit at ${current_price:,.2f} after {duration}")
             send_exit_alert(self.symbol, direction, entry_price, current_price, "timeout", pnl_pct, rr, duration.total_seconds() / 60)
             self.state.exit_position()
@@ -391,15 +393,17 @@ class LiveSignalGenerator:
                 ts = offline_df.iloc[i]["timestamp"]
                 price = float(offline_df.iloc[i]["close"])
                 direction = strategy["direction"]
-                sl_pct = strategy["sl"]
+                sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))
                 rr = strategy["rr"]
+                atr_value = float(offline_df.iloc[i].get("atr_14", 0))
+                sl_distance = atr_value * sl_atr_mult
 
                 if direction == "LONG":
-                    sl_price = price * (1.0 - sl_pct / 100.0)
-                    tp_price = price * (1.0 + sl_pct * rr / 100.0)
+                    sl_price = price - sl_distance
+                    tp_price = price + sl_distance * rr
                 else:
-                    sl_price = price * (1.0 + sl_pct / 100.0)
-                    tp_price = price * (1.0 - sl_pct * rr / 100.0)
+                    sl_price = price + sl_distance
+                    tp_price = price - sl_distance * rr
 
                 signal_time = pd.Timestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
                 logger.info(f"[RECOVERY] Missed signal: {direction} at ${price:,.2f} on {signal_time}")
@@ -421,8 +425,12 @@ class LiveSignalGenerator:
             return (exit_price - entry) / entry - 2 * config.TRADING_FEE_PCT / 100
         return (entry - exit_price) / entry - 2 * config.TRADING_FEE_PCT / 100
 
-    def _calc_rr(self, entry: float, exit_price: float, direction: str, sl_pct: float) -> float:
-        risk = entry * sl_pct / 100
+    def _calc_rr(self, entry: float, exit_price: float, direction: str, sl_price: float) -> float:
+        """Calculate RR for a trade using absolute SL price."""
+        if sl_price and entry:
+            risk = abs(entry - sl_price)
+        else:
+            return 0.0
         if risk == 0:
             return 0.0
         if direction == "LONG":

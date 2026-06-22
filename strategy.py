@@ -54,14 +54,14 @@ def generate_random_strategy(direction: Optional[str] = None) -> dict:
     conditions = random.sample(pool, min(num_conditions, len(pool)))
 
     threshold = round(random.uniform(config.MIN_THRESHOLD, config.MAX_THRESHOLD), 4)
-    sl = round(random.uniform(config.MIN_SL, config.MAX_SL), 2)
+    sl_atr_mult = round(random.uniform(config.MIN_SL_ATR_MULT, config.MAX_SL_ATR_MULT), 2)
     rr = round(random.uniform(config.MIN_RR, config.MAX_RR), 2)
 
     return {
         "id": f"strat_{uuid.uuid4().hex[:8]}",
         "conditions": conditions,
         "threshold": threshold,
-        "sl": sl,
+        "sl_atr_mult": sl_atr_mult,
         "rr": rr,
         "direction": direction,
     }

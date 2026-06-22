@@ -39,16 +39,16 @@ TRAINING_MINUTES = 30
 TRAINING_PERIOD_MONTHS = 12
 TRAINING_METHOD = "ga_bayesian"  # "random" or "ga_bayesian"
 
-# === Strategy Generation (percentage-based) ===
-MIN_CONDITION_PERCENTAGE = 0.25  # 25% of the pool
-MAX_CONDITION_PERCENTAGE = 0.90  # 90% of the pool
-MIN_CONDITIONS_ABSOLUTE = 3      # Safety floor (never go below 3 conditions)
-MIN_THRESHOLD = 0.5
+# === Strategy Generation ===
+MIN_CONDITION_PERCENTAGE = 0.25  # INACTIVE (superseded by MIN_CONDITIONS_ABSOLUTE)
+MAX_CONDITION_PERCENTAGE = 0.90  # 90% of the pool — ACTIVE (used for max condition count)
+MIN_CONDITIONS_ABSOLUTE = 4      # ACTIVE — Hard floor (never go below 4 conditions)
+MIN_THRESHOLD = 0.3
 MAX_THRESHOLD = 0.7
-MIN_SL = 0.3  # percent
-MAX_SL = 3.0  # percent
+MIN_SL_ATR_MULT = 1.0   # Minimum ATR multiplier for stop loss
+MAX_SL_ATR_MULT = 3.0   # Maximum ATR multiplier for stop loss
 MIN_RR = 1.0
-MAX_RR = 8.0
+MAX_RR = 5.0
 
 # === GA Parameters ===
 GA_POPULATION_SIZE = 200
@@ -63,7 +63,7 @@ BAYESIAN_MAX_TRIALS = 10000      # Safety cap for timeout-based Bayesian (rarely
 BAYESIAN_STARTUP_TRIALS = 100    # Random trials before TPE model kicks in
 
 # === Qualification / Disqualification ===
-MIN_TRADES_PER_DAY = 1.5
+MIN_TRADES_PER_DAY = 1.2
 MAX_TRADES_PER_DAY = 10
 MIN_WIN_RATE = 0.35  # 35%
 MAX_DRAWDOWN = 0.50  # 50%
@@ -72,7 +72,7 @@ DRAWDOWN_PENALTY_END = 0.50  # 50%
 
 # === Trade Parameters ===
 MIN_TRADE_DURATION_MINUTES = 45
-MAX_TRADE_DURATION_HOURS = 48
+MAX_TRADE_DURATION_HOURS = 24
 COOLDOWN_CANDLES = 4
 TRADING_FEE_PCT = 0.1  # per side
 

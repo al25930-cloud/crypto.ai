@@ -58,7 +58,7 @@ def backtest_strategy(
     """
     conditions = strategy["conditions"]
     threshold = strategy["threshold"]
-    sl_pct = strategy["sl"]
+    sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))  # Fallback for backward compat
     rr_ratio = strategy["rr"]
     direction = strategy["direction"]
 
@@ -79,6 +79,7 @@ def backtest_strategy(
     lows = df["low"].values
     timestamps = df["timestamp"].values
     satisfies = satisfaction.values
+    atr_values = df["atr_14"].values
 
     min_duration = timedelta(minutes=config.MIN_TRADE_DURATION_MINUTES)
     max_duration = timedelta(hours=config.MAX_TRADE_DURATION_HOURS)
@@ -162,8 +163,8 @@ def backtest_strategy(
                 # Deduct fees (entry + exit)
                 net_pnl_pct = gross_pnl_pct - (2 * fee_pct)
 
-                # Calculate RR for this trade
-                risk_amount = entry_price * sl_pct / 100.0
+                # Calculate RR for this trade using ATR-based risk
+                risk_amount = atr_values[entry_idx] * sl_atr_mult
                 if risk_amount > 0:
                     trade_rr = ((exit_price - entry_price) / risk_amount) if direction == "LONG" \
                         else ((entry_price - exit_price) / risk_amount)
@@ -210,13 +211,16 @@ def backtest_strategy(
                     in_position = True
                     entry_price = closes[i]
                     entry_time = ts
+                    entry_idx = i  # Store index for ATR lookup on exit
+                    atr_at_entry = atr_values[i]
+                    sl_distance = atr_at_entry * sl_atr_mult
 
                     if direction == "LONG":
-                        sl_price = entry_price * (1.0 - sl_pct / 100.0)
-                        tp_price = entry_price * (1.0 + sl_pct * rr_ratio / 100.0)
+                        sl_price = entry_price - sl_distance
+                        tp_price = entry_price + sl_distance * rr_ratio
                     else:  # SHORT
-                        sl_price = entry_price * (1.0 + sl_pct / 100.0)
-                        tp_price = entry_price * (1.0 - sl_pct * rr_ratio / 100.0)
+                        sl_price = entry_price + sl_distance
+                        tp_price = entry_price - sl_distance * rr_ratio
 
             equity_curve.append(equity)
 
@@ -235,7 +239,7 @@ def backtest_strategy(
 
         net_pnl_pct = gross_pnl_pct - (2 * fee_pct)
 
-        risk_amount = entry_price * sl_pct / 100.0
+        risk_amount = atr_values[entry_idx] * sl_atr_mult
         if risk_amount > 0:
             trade_rr = ((exit_price - entry_price) / risk_amount) if direction == "LONG" \
                 else ((entry_price - exit_price) / risk_amount)

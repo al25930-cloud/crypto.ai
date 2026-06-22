@@ -141,7 +141,7 @@ class BayesianOptimizer:
         # Build best strategy
         if self.best_strategy is None:
             logger.warning("Bayesian: No valid strategy found.")
-            return {"id": "none", "conditions": [], "threshold": 0.5, "sl": 1.0, "rr": 2.0, "direction": "LONG", "score": float("-inf"), "method": "bayesian"}
+            return {"id": "none", "conditions": [], "threshold": 0.5, "sl_atr_mult": 1.5, "rr": 2.0, "direction": "LONG", "score": float("-inf"), "method": "bayesian"}
 
         best = self.best_strategy.copy()
         best["score"] = self.best_score
@@ -196,7 +196,7 @@ class BayesianOptimizer:
                 "id": f"strat_{uuid.uuid4().hex[:8]}",
                 "conditions": pool[:min_count],
                 "threshold": 0.5,
-                "sl": 1.0,
+                "sl_atr_mult": 1.5,
                 "rr": 2.0,
                 "direction": direction,
             }
@@ -226,8 +226,8 @@ class BayesianOptimizer:
         threshold = round(
             trial.suggest_float("threshold", config.MIN_THRESHOLD, config.MAX_THRESHOLD), 4
         )
-        sl = round(
-            trial.suggest_float("sl", config.MIN_SL, config.MAX_SL), 2
+        sl_atr_mult = round(
+            trial.suggest_float("sl_atr_mult", config.MIN_SL_ATR_MULT, config.MAX_SL_ATR_MULT), 2
         )
         rr = round(
             trial.suggest_float("rr", config.MIN_RR, config.MAX_RR), 2
@@ -237,7 +237,7 @@ class BayesianOptimizer:
             "id": f"strat_{uuid.uuid4().hex[:8]}",
             "conditions": conditions,
             "threshold": threshold,
-            "sl": sl,
+            "sl_atr_mult": sl_atr_mult,
             "rr": rr,
             "direction": direction,
         }
@@ -265,7 +265,7 @@ class BayesianOptimizer:
             "direction": direction,
             "num_conditions": num,
             "threshold": strategy["threshold"],
-            "sl": strategy["sl"],
+            "sl_atr_mult": strategy.get("sl_atr_mult", strategy.get("sl", 1.5)),
             "rr": strategy["rr"],
         }
 
