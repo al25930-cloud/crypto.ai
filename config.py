@@ -51,9 +51,11 @@ MIN_RR = 1.0
 MAX_RR = 5.0
 
 # === Dynamic Direction Thresholds ===
-# Fixed system-wide thresholds for bi-directional strategies.
-# Not evolved per-strategy — prevents overfitting to ambiguous entries.
-MIN_DIRECTION_STRENGTH = 0.60   # Minimum true-condition ratio for dominant direction
+# Single-gate entry: the dominant direction's strength (true/total for that direction's
+# conditions) must clear the strategy's threshold AND be at least DIRECTION_RATIO× stronger
+# than the opposite direction. No overall "all conditions" satisfaction gate — this avoided
+# false negatives on clear one-sided signals (e.g., 4 LONG true / 0 SHORT would fail Gate 1
+# even though it's a strong LONG signal).
 DIRECTION_RATIO = 1.3           # Dominant must be >= 1.3× stronger than opposite
 
 # === GA Parameters ===
@@ -84,7 +86,7 @@ TIMEOUT_PENALTY = 0.15             # 15% score reduction for excessive timeouts
 MIN_TRADE_DURATION_MINUTES = 45
 MAX_TRADE_DURATION_HOURS = 24
 COOLDOWN_CANDLES = 4
-TRADING_FEE_PCT = 0.1  # per side
+TRADING_FEE_PCT = 0.2  # per side
 
 # === Live Mode ===
 LIVE_CHECK_INTERVAL_SECONDS = 900  # 15 minutes
@@ -94,14 +96,18 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 BASE_DIR = Path(__file__).parent
 DATA_CACHE_DIR = BASE_DIR / "data"
 MODEL_DIR = BASE_DIR / "models"
-LOG_DIR = BASE_DIR / "logs"
+LOG_DIR_TRAINING = BASE_DIR / "logs" / "training"
+LOG_DIR_VALIDATION = BASE_DIR / "logs" / "validation"
+LOG_DIR_LIVE = BASE_DIR / "logs" / "live"
 STATE_FILE = BASE_DIR / "state.json"
 REMOVED_CONDITIONS_FILE = MODEL_DIR / "removed_conditions.json"
 
 # Ensure directories exist
 DATA_CACHE_DIR.mkdir(exist_ok=True)
 MODEL_DIR.mkdir(exist_ok=True)
-LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR_TRAINING.mkdir(parents=True, exist_ok=True)
+LOG_DIR_VALIDATION.mkdir(parents=True, exist_ok=True)
+LOG_DIR_LIVE.mkdir(parents=True, exist_ok=True)
 
 # === Indicator Library ===
 # Auto-detected: TA-Lib preferred, pandas_ta fallback

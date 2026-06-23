@@ -1,0 +1,196 @@
+2026-06-22 15:29:36 INFO Training log: C:\Users\xfide\documents\crypto.ai\logs\training_2026-06-22_152936.log
+2026-06-22 15:29:36 INFO Training started | Method: ga_bayesian | Symbol: BTC/USDT | Timeframe: 15m | Duration: 40 min
+2026-06-22 15:29:36 INFO   Objective: Find the strategy with the highest score. Score = rr_per_day x drawdown_penalty x low_trades_penalty.
+2026-06-22 15:29:36 INFO   Disqualified if: trades/day < 1.2, win_rate < 35%, max_drawdown > 50%, or avg_trades/day outside 0.5-10.
+2026-06-22 15:29:36 INFO Loading historical data...
+2026-06-22 15:29:36 INFO Cache found: 17533 candles up to 2026-06-22 13:15:00+00:00. Fetching from 2026-06-22 13:30:00+00:00.
+2026-06-22 15:29:36 INFO Fetching BTC/USDT 15m from 2026-06-22 13:30 to 2026-06-22 14:29
+2026-06-22 15:29:41 INFO Fetched 4 new candles in 1 requests.
+2026-06-22 15:29:41 INFO Total candles available: 17537
+2026-06-22 15:29:41 INFO Raw data: 17537 candles (2025-12-21 to 2026-06-22, 12 months)
+2026-06-22 15:29:41 INFO Computing indicators...
+2026-06-22 15:29:41 INFO Data prepared: 17338 candles after warmup drop.
+2026-06-22 15:29:41 INFO Clean data: 17338 candles after warmup
+2026-06-22 15:29:41 INFO Pre-computing 53 conditions...
+2026-06-22 15:29:41 INFO Data preparation complete.
+2026-06-22 15:29:41 INFO ============================================================
+2026-06-22 15:29:41 INFO Phase 1: Genetic Algorithm (global search -- evolve strategies over generations)
+2026-06-22 15:29:41 INFO ============================================================
+2026-06-22 15:29:41 INFO GA: Starting | pop=200, time_budget=1200s (20.0m), max_gen=200, cx=0.8, mut=0.2, elite=5
+2026-06-22 15:29:41 INFO   Score = rr_per_day * drawdown_penalty * low_trades_penalty. Higher = better. Negative or -inf means disqualified.
+2026-06-22 15:29:55 INFO GA Gen 0 | Best score: 0.2534 | Avg score: 0.1045 | Pop: 200 | Elapsed: 14s
+2026-06-22 15:30:07 INFO GA Gen 1 | Best score: 0.2534 | Avg score: 0.1322 | Tested: 361 | Elapsed: 26s
+2026-06-22 15:30:21 INFO GA Gen 2 | Best score: 0.2667 | Avg score: 0.1097 | Tested: 526 | Elapsed: 39s [NEW BEST!]
+2026-06-22 15:30:46 INFO GA Gen 3 | Best score: 0.3061 | Avg score: 0.1298 | Tested: 693 | Elapsed: 64s [NEW BEST!]
+2026-06-22 15:31:02 INFO GA Gen 4 | Best score: 0.3061 | Avg score: 0.1163 | Tested: 852 | Elapsed: 81s
+2026-06-22 15:31:18 INFO GA Gen 5 | Best score: 0.3061 | Avg score: 0.1212 | Tested: 1016 | Elapsed: 96s
+2026-06-22 15:31:30 INFO GA Gen 6 | Best score: 0.3061 | Avg score: 0.1270 | Tested: 1159 | Elapsed: 108s
+2026-06-22 15:31:44 INFO GA Gen 7 | Best score: 0.3061 | Avg score: 0.1372 | Tested: 1319 | Elapsed: 123s
+2026-06-22 15:31:59 INFO GA Gen 8 | Best score: 0.3443 | Avg score: 0.1266 | Tested: 1493 | Elapsed: 137s [NEW BEST!]
+2026-06-22 15:32:11 INFO GA Gen 9 | Best score: 0.3443 | Avg score: 0.1330 | Tested: 1639 | Elapsed: 150s
+2026-06-22 15:32:24 INFO GA Gen 10 | Best score: 0.3495 | Avg score: 0.1546 | Tested: 1793 | Elapsed: 163s [NEW BEST!]
+2026-06-22 15:32:38 INFO GA Gen 11 | Best score: 0.3523 | Avg score: 0.1555 | Tested: 1949 | Elapsed: 176s [NEW BEST!]
+2026-06-22 15:32:52 INFO GA Gen 12 | Best score: 0.3523 | Avg score: 0.1623 | Tested: 2114 | Elapsed: 191s
+2026-06-22 15:33:06 INFO GA Gen 13 | Best score: 0.3718 | Avg score: 0.1753 | Tested: 2273 | Elapsed: 205s [NEW BEST!]
+2026-06-22 15:33:19 INFO GA Gen 14 | Best score: 0.3970 | Avg score: 0.1930 | Tested: 2439 | Elapsed: 218s [NEW BEST!]
+2026-06-22 15:33:31 INFO GA Gen 15 | Best score: 0.4060 | Avg score: 0.1997 | Tested: 2598 | Elapsed: 230s [NEW BEST!]
+2026-06-22 15:33:47 INFO GA Gen 16 | Best score: 0.4060 | Avg score: 0.2380 | Tested: 2758 | Elapsed: 246s
+2026-06-22 15:34:03 INFO GA Gen 17 | Best score: 0.4350 | Avg score: 0.2450 | Tested: 2917 | Elapsed: 261s [NEW BEST!]
+2026-06-22 15:34:18 INFO GA Gen 18 | Best score: 0.4350 | Avg score: 0.2492 | Tested: 3093 | Elapsed: 277s
+2026-06-22 15:34:32 INFO GA Gen 19 | Best score: 0.4350 | Avg score: 0.2576 | Tested: 3264 | Elapsed: 291s
+2026-06-22 15:34:46 INFO GA Gen 20 | Best score: 0.4615 | Avg score: 0.2639 | Tested: 3424 | Elapsed: 304s [NEW BEST!]
+2026-06-22 15:35:01 INFO GA Gen 21 | Best score: 0.4615 | Avg score: 0.2999 | Tested: 3582 | Elapsed: 320s
+2026-06-22 15:35:14 INFO GA Gen 22 | Best score: 0.4615 | Avg score: 0.3177 | Tested: 3741 | Elapsed: 333s
+2026-06-22 15:35:30 INFO GA Gen 23 | Best score: 0.4615 | Avg score: 0.3373 | Tested: 3903 | Elapsed: 349s
+2026-06-22 15:35:46 INFO GA Gen 24 | Best score: 0.4910 | Avg score: 0.3511 | Tested: 4059 | Elapsed: 365s [NEW BEST!]
+2026-06-22 15:36:03 INFO GA Gen 25 | Best score: 0.4910 | Avg score: 0.3617 | Tested: 4217 | Elapsed: 382s
+2026-06-22 15:36:19 INFO GA Gen 26 | Best score: 0.4910 | Avg score: 0.3518 | Tested: 4392 | Elapsed: 398s
+2026-06-22 15:36:34 INFO GA Gen 27 | Best score: 0.4910 | Avg score: 0.3615 | Tested: 4560 | Elapsed: 413s
+2026-06-22 15:36:47 INFO GA Gen 28 | Best score: 0.4910 | Avg score: 0.3536 | Tested: 4725 | Elapsed: 426s
+2026-06-22 15:37:02 INFO GA Gen 29 | Best score: 0.4910 | Avg score: 0.3515 | Tested: 4885 | Elapsed: 441s
+2026-06-22 15:37:17 INFO GA Gen 30 | Best score: 0.4910 | Avg score: 0.3272 | Tested: 5056 | Elapsed: 455s
+2026-06-22 15:37:30 INFO GA Gen 31 | Best score: 0.4910 | Avg score: 0.3366 | Tested: 5222 | Elapsed: 469s
+2026-06-22 15:37:44 INFO GA Gen 32 | Best score: 0.4910 | Avg score: 0.3368 | Tested: 5393 | Elapsed: 483s
+2026-06-22 15:37:59 INFO GA Gen 33 | Best score: 0.5039 | Avg score: 0.3421 | Tested: 5556 | Elapsed: 498s [NEW BEST!]
+2026-06-22 15:38:12 INFO GA Gen 34 | Best score: 0.5039 | Avg score: 0.3568 | Tested: 5717 | Elapsed: 511s
+2026-06-22 15:38:24 INFO GA Gen 35 | Best score: 0.5103 | Avg score: 0.3695 | Tested: 5869 | Elapsed: 523s [NEW BEST!]
+2026-06-22 15:38:37 INFO GA Gen 36 | Best score: 0.5103 | Avg score: 0.3481 | Tested: 6039 | Elapsed: 535s
+2026-06-22 15:38:50 INFO GA Gen 37 | Best score: 0.5148 | Avg score: 0.3641 | Tested: 6218 | Elapsed: 549s [NEW BEST!]
+2026-06-22 15:39:03 INFO GA Gen 38 | Best score: 0.5148 | Avg score: 0.3816 | Tested: 6368 | Elapsed: 562s
+2026-06-22 15:39:16 INFO GA Gen 39 | Best score: 0.5148 | Avg score: 0.3870 | Tested: 6540 | Elapsed: 575s
+2026-06-22 15:39:29 INFO GA Gen 40 | Best score: 0.5148 | Avg score: 0.3794 | Tested: 6705 | Elapsed: 588s
+2026-06-22 15:39:42 INFO GA Gen 41 | Best score: 0.5148 | Avg score: 0.4095 | Tested: 6862 | Elapsed: 601s
+2026-06-22 15:39:58 INFO GA Gen 42 | Best score: 0.5148 | Avg score: 0.4144 | Tested: 7024 | Elapsed: 617s
+2026-06-22 15:40:09 INFO GA Gen 43 | Best score: 0.5148 | Avg score: 0.4292 | Tested: 7170 | Elapsed: 628s
+2026-06-22 15:40:22 INFO GA Gen 44 | Best score: 0.5152 | Avg score: 0.4126 | Tested: 7327 | Elapsed: 641s [NEW BEST!]
+2026-06-22 15:40:37 INFO GA Gen 45 | Best score: 0.5152 | Avg score: 0.3886 | Tested: 7495 | Elapsed: 656s
+2026-06-22 15:40:52 INFO GA Gen 46 | Best score: 0.5152 | Avg score: 0.4150 | Tested: 7658 | Elapsed: 670s
+2026-06-22 15:41:06 INFO GA Gen 47 | Best score: 0.5152 | Avg score: 0.3967 | Tested: 7824 | Elapsed: 685s
+2026-06-22 15:41:22 INFO GA Gen 48 | Best score: 0.5175 | Avg score: 0.4219 | Tested: 8003 | Elapsed: 701s [NEW BEST!]
+2026-06-22 15:41:34 INFO GA Gen 49 | Best score: 0.5175 | Avg score: 0.4665 | Tested: 8161 | Elapsed: 713s
+2026-06-22 15:41:50 INFO GA Gen 50 | Best score: 0.5175 | Avg score: 0.4794 | Tested: 8324 | Elapsed: 729s
+2026-06-22 15:42:06 INFO GA Gen 51 | Best score: 0.5319 | Avg score: 0.4828 | Tested: 8494 | Elapsed: 744s [NEW BEST!]
+2026-06-22 15:42:21 INFO GA Gen 52 | Best score: 0.5339 | Avg score: 0.4705 | Tested: 8667 | Elapsed: 760s [NEW BEST!]
+2026-06-22 15:42:35 INFO GA Gen 53 | Best score: 0.5339 | Avg score: 0.4726 | Tested: 8820 | Elapsed: 773s
+2026-06-22 15:43:13 INFO GA Gen 54 | Best score: 0.5339 | Avg score: 0.4674 | Tested: 8986 | Elapsed: 811s
+2026-06-22 15:44:20 INFO GA Gen 55 | Best score: 0.5339 | Avg score: 0.4742 | Tested: 9152 | Elapsed: 879s
+2026-06-22 15:44:42 INFO GA Gen 56 | Best score: 0.5339 | Avg score: 0.4814 | Tested: 9311 | Elapsed: 901s
+2026-06-22 15:44:58 INFO GA Gen 57 | Best score: 0.5339 | Avg score: 0.4748 | Tested: 9476 | Elapsed: 917s
+2026-06-22 15:45:11 INFO GA Gen 58 | Best score: 0.5339 | Avg score: 0.4795 | Tested: 9637 | Elapsed: 930s
+2026-06-22 15:45:25 INFO GA Gen 59 | Best score: 0.5339 | Avg score: 0.5008 | Tested: 9798 | Elapsed: 944s
+2026-06-22 15:46:09 INFO GA Gen 60 | Best score: 0.5339 | Avg score: 0.4947 | Tested: 9967 | Elapsed: 988s
+2026-06-22 15:46:26 INFO GA Gen 61 | Best score: 0.5339 | Avg score: 0.4941 | Tested: 10133 | Elapsed: 1005s
+2026-06-22 15:46:40 INFO GA Gen 62 | Best score: 0.5339 | Avg score: 0.5015 | Tested: 10296 | Elapsed: 1019s
+2026-06-22 15:46:55 INFO GA Gen 63 | Best score: 0.5384 | Avg score: 0.5012 | Tested: 10456 | Elapsed: 1034s [NEW BEST!]
+2026-06-22 15:47:12 INFO GA Gen 64 | Best score: 0.5711 | Avg score: 0.5022 | Tested: 10622 | Elapsed: 1051s [NEW BEST!]
+2026-06-22 15:48:06 INFO GA Gen 65 | Best score: 0.5711 | Avg score: 0.4996 | Tested: 10788 | Elapsed: 1105s
+2026-06-22 15:48:23 INFO GA Gen 66 | Best score: 0.5711 | Avg score: 0.4947 | Tested: 10949 | Elapsed: 1122s
+2026-06-22 15:48:54 INFO GA Gen 67 | Best score: 0.5711 | Avg score: 0.4992 | Tested: 11118 | Elapsed: 1153s
+2026-06-22 15:49:10 INFO GA Gen 68 | Best score: 0.5711 | Avg score: 0.4919 | Tested: 11279 | Elapsed: 1169s
+2026-06-22 15:49:25 INFO GA Gen 69 | Best score: 0.5711 | Avg score: 0.5014 | Tested: 11452 | Elapsed: 1184s
+2026-06-22 15:49:40 INFO GA Gen 70 | Best score: 0.5711 | Avg score: 0.5024 | Tested: 11617 | Elapsed: 1199s
+2026-06-22 15:49:55 INFO GA Gen 71 | Best score: 0.5711 | Avg score: 0.5149 | Tested: 11772 | Elapsed: 1214s
+2026-06-22 15:49:55 INFO GA: Time budget exhausted at generation 71. Stopping.
+2026-06-22 15:49:55 INFO GA: Finished | Best score: 0.5711 | 71 generations | Elapsed: 1214s | Strategies tested: 11772 | Speed: 9.7 strats/s | Passing top 10 to Bayesian optimizer.
+2026-06-22 15:49:55 INFO 
+2026-06-22 15:49:55 INFO [EFFICIENCY] GA phase complete. Analyzing condition efficiency...
+2026-06-22 15:49:55 INFO ============================================================
+2026-06-22 15:49:55 INFO EFFICIENCY REPORT
+2026-06-22 15:49:55 INFO ============================================================
+2026-06-22 15:49:55 INFO Strategies analyzed: 10482
+2026-06-22 15:49:55 INFO Global avg RR/day: 0.4318
+2026-06-22 15:49:55 INFO   LONG avg RR/day: 0.0000 (0 strategies)
+2026-06-22 15:49:55 INFO   SHORT avg RR/day: 0.0000 (0 strategies)
+2026-06-22 15:49:55 INFO 
+2026-06-22 15:49:55 INFO [WARNING] WARNINGS (insufficient data):
+2026-06-22 15:49:55 INFO   'ema_12_gt_26' (LONG) | Used: 879 | Top10%: 0 | Avg RR/day: 0.29 (global: 0.43) | WR: 39% | Eff: 0.67
+2026-06-22 15:49:55 INFO   'ema_20_gt_50' (LONG) | Used: 551 | Top10%: 0 | Avg RR/day: 0.26 (global: 0.43) | WR: 38% | Eff: 0.60
+2026-06-22 15:49:55 INFO   'sma_20_gt_50' (LONG) | Used: 311 | Top10%: 0 | Avg RR/day: 0.24 (global: 0.43) | WR: 38% | Eff: 0.56
+2026-06-22 15:49:55 INFO   'price_gt_sma_200' (LONG) | Used: 505 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.58
+2026-06-22 15:49:55 INFO   'macd_gt_signal' (LONG) | Used: 1061 | Top10%: 0 | Avg RR/day: 0.28 (global: 0.43) | WR: 39% | Eff: 0.64
+2026-06-22 15:49:55 INFO   'rsi_14_gt_50' (LONG) | Used: 256 | Top10%: 0 | Avg RR/day: 0.24 (global: 0.43) | WR: 38% | Eff: 0.57
+2026-06-22 15:49:55 INFO   'rsi_14_lt_30' (LONG) | Used: 102 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.58
+2026-06-22 15:49:55 INFO   'rsi_21_lt_30' (LONG) | Used: 50 | Top10%: 0 | Avg RR/day: 0.24 (global: 0.43) | WR: 38% | Eff: 0.55
+2026-06-22 15:49:55 INFO   'stoch_k_lt_80' (LONG) | Used: 645 | Top10%: 0 | Avg RR/day: 0.26 (global: 0.43) | WR: 38% | Eff: 0.60
+2026-06-22 15:49:55 INFO   'cci_14_lt_100' (LONG) | Used: 332 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.58
+2026-06-22 15:49:55 INFO   'williams_gt_-80' (LONG) | Used: 1031 | Top10%: 0 | Avg RR/day: 0.28 (global: 0.43) | WR: 39% | Eff: 0.65
+2026-06-22 15:49:55 INFO   'williams_lt_-20' (LONG) | Used: 492 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.59
+2026-06-22 15:49:55 INFO   'price_lt_bb_lower_20_2' (LONG) | Used: 65 | Top10%: 0 | Avg RR/day: 0.24 (global: 0.43) | WR: 37% | Eff: 0.55
+2026-06-22 15:49:55 INFO   'price_lt_bb_lower_20_1_5' (LONG) | Used: 580 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.59
+2026-06-22 15:49:55 INFO   'price_gt_bb_upper_20_1_5' (LONG) | Used: 77 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.58
+2026-06-22 15:49:55 INFO   'ema_20_lt_50' (SHORT) | Used: 889 | Top10%: 0 | Avg RR/day: 0.29 (global: 0.43) | WR: 39% | Eff: 0.66
+2026-06-22 15:49:55 INFO   'sma_20_lt_50' (SHORT) | Used: 845 | Top10%: 0 | Avg RR/day: 0.28 (global: 0.43) | WR: 39% | Eff: 0.65
+2026-06-22 15:49:55 INFO   'price_lt_sma_50' (SHORT) | Used: 257 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.59
+2026-06-22 15:49:55 INFO   'price_lt_sma_200' (SHORT) | Used: 121 | Top10%: 0 | Avg RR/day: 0.24 (global: 0.43) | WR: 37% | Eff: 0.56
+2026-06-22 15:49:55 INFO   'macd_lt_signal' (SHORT) | Used: 477 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.59
+2026-06-22 15:49:55 INFO   'rsi_14_gt_70' (SHORT) | Used: 48 | Top10%: 0 | Avg RR/day: 0.22 (global: 0.43) | WR: 37% | Eff: 0.51
+2026-06-22 15:49:55 INFO   'rsi_21_gt_70' (SHORT) | Used: 210 | Top10%: 0 | Avg RR/day: 0.24 (global: 0.43) | WR: 38% | Eff: 0.55
+2026-06-22 15:49:55 INFO   'stoch_k_gt_80' (SHORT) | Used: 37 | Top10%: 0 | Avg RR/day: 0.23 (global: 0.43) | WR: 38% | Eff: 0.54
+2026-06-22 15:49:55 INFO   'stoch_k_lt_20' (SHORT) | Used: 886 | Top10%: 0 | Avg RR/day: 0.28 (global: 0.43) | WR: 39% | Eff: 0.65
+2026-06-22 15:49:55 INFO   'cci_14_gt_100' (SHORT) | Used: 457 | Top10%: 0 | Avg RR/day: 0.27 (global: 0.43) | WR: 38% | Eff: 0.62
+2026-06-22 15:49:55 INFO   'cci_14_lt_-100' (SHORT) | Used: 116 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.59
+2026-06-22 15:49:55 INFO   'williams_gt_-20' (SHORT) | Used: 228 | Top10%: 0 | Avg RR/day: 0.26 (global: 0.43) | WR: 38% | Eff: 0.59
+2026-06-22 15:49:55 INFO   'williams_lt_-80' (SHORT) | Used: 57 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 36% | Eff: 0.58
+2026-06-22 15:49:55 INFO   'price_gt_bb_upper_20_2_s' (SHORT) | Used: 168 | Top10%: 0 | Avg RR/day: 0.23 (global: 0.43) | WR: 38% | Eff: 0.53
+2026-06-22 15:49:55 INFO   'price_lt_bb_lower_20_2_s' (SHORT) | Used: 46 | Top10%: 0 | Avg RR/day: 0.22 (global: 0.43) | WR: 37% | Eff: 0.51
+2026-06-22 15:49:55 INFO   'price_gt_bb_upper_20_1_5_s' (SHORT) | Used: 37 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.58
+2026-06-22 15:49:55 INFO   'price_lt_bb_lower_20_1_5_s' (SHORT) | Used: 470 | Top10%: 0 | Avg RR/day: 0.25 (global: 0.43) | WR: 38% | Eff: 0.57
+2026-06-22 15:49:55 INFO   'volume_gt_sma_20_1_5' (SHARED) | Used: 170 | Top10%: 0 | Avg RR/day: 0.23 (global: 0.43) | WR: 38% | Eff: 0.54
+2026-06-22 15:49:55 INFO   'volume_gt_sma_20_2_0' (SHARED) | Used: 27 | Top10%: 0 | Avg RR/day: 0.23 (global: 0.43) | WR: 38% | Eff: 0.53
+2026-06-22 15:49:55 INFO   'adx_14_gt_25' (SHARED) | Used: 253 | Top10%: 0 | Avg RR/day: 0.26 (global: 0.43) | WR: 38% | Eff: 0.59
+2026-06-22 15:49:55 INFO   'adx_14_lt_20' (SHARED) | Used: 114 | Top10%: 0 | Avg RR/day: 0.26 (global: 0.43) | WR: 37% | Eff: 0.61
+2026-06-22 15:49:55 INFO   'price_lt_low_20_0_98' (SHARED) | Used: 65 | Top10%: 0 | Avg RR/day: 0.26 (global: 0.43) | WR: 37% | Eff: 0.60
+2026-06-22 15:49:55 INFO 
+2026-06-22 15:49:55 INFO [OK] OK CONDITIONS:
+2026-06-22 15:49:55 INFO   'ema_9_gt_21' (LONG) | Used: 9768 | Top10%: 1048 | Avg RR/day: 0.44 (global: 0.43) | WR: 41% | Eff: 1.03
+2026-06-22 15:49:55 INFO   'price_gt_sma_50' (LONG) | Used: 9736 | Top10%: 1048 | Avg RR/day: 0.45 (global: 0.43) | WR: 41% | Eff: 1.03
+2026-06-22 15:49:55 INFO   'macd_hist_gt_0' (LONG) | Used: 1270 | Top10%: 0 | Avg RR/day: 0.42 (global: 0.43) | WR: 41% | Eff: 0.97
+2026-06-22 15:49:55 INFO   'rsi_21_gt_50' (LONG) | Used: 2931 | Top10%: 0 | Avg RR/day: 0.41 (global: 0.43) | WR: 41% | Eff: 0.94
+2026-06-22 15:49:55 INFO   'stoch_k_gt_20' (LONG) | Used: 9615 | Top10%: 1048 | Avg RR/day: 0.45 (global: 0.43) | WR: 41% | Eff: 1.04
+2026-06-22 15:49:55 INFO   'cci_14_gt_-100' (LONG) | Used: 9218 | Top10%: 1048 | Avg RR/day: 0.45 (global: 0.43) | WR: 41% | Eff: 1.05
+2026-06-22 15:49:55 INFO   'price_gt_bb_upper_20_2' (LONG) | Used: 6559 | Top10%: 1048 | Avg RR/day: 0.47 (global: 0.43) | WR: 41% | Eff: 1.08
+2026-06-22 15:49:55 INFO   'ema_9_lt_21' (SHORT) | Used: 8712 | Top10%: 1048 | Avg RR/day: 0.44 (global: 0.43) | WR: 41% | Eff: 1.03
+2026-06-22 15:49:55 INFO   'ema_12_lt_26' (SHORT) | Used: 3914 | Top10%: 0 | Avg RR/day: 0.39 (global: 0.43) | WR: 41% | Eff: 0.91
+2026-06-22 15:49:55 INFO   'macd_hist_lt_0' (SHORT) | Used: 3055 | Top10%: 0 | Avg RR/day: 0.39 (global: 0.43) | WR: 40% | Eff: 0.91
+2026-06-22 15:49:55 INFO   'rsi_14_lt_50' (SHORT) | Used: 2965 | Top10%: 1048 | Avg RR/day: 0.47 (global: 0.43) | WR: 41% | Eff: 1.09
+2026-06-22 15:49:55 INFO   'rsi_21_lt_50' (SHORT) | Used: 7375 | Top10%: 0 | Avg RR/day: 0.42 (global: 0.43) | WR: 41% | Eff: 0.97
+2026-06-22 15:49:55 INFO   'atr_gt_sma_atr_20' (SHARED) | Used: 6376 | Top10%: 1048 | Avg RR/day: 0.48 (global: 0.43) | WR: 41% | Eff: 1.10
+2026-06-22 15:49:55 INFO   'obv_gt_sma_obv_20' (SHARED) | Used: 9250 | Top10%: 1048 | Avg RR/day: 0.45 (global: 0.43) | WR: 41% | Eff: 1.05
+2026-06-22 15:49:55 INFO   'adx_14_gt_30' (SHARED) | Used: 8960 | Top10%: 1048 | Avg RR/day: 0.46 (global: 0.43) | WR: 41% | Eff: 1.06
+2026-06-22 15:49:55 INFO   'price_gt_high_20_1_02' (SHARED) | Used: 9906 | Top10%: 1048 | Avg RR/day: 0.44 (global: 0.43) | WR: 41% | Eff: 1.02
+2026-06-22 15:49:55 INFO 
+2026-06-22 15:49:55 INFO ============================================================
+2026-06-22 15:49:55 INFO Efficiency report saved to C:\Users\xfide\documents\crypto.ai\models\condition_efficiency.json
+2026-06-22 15:49:55 INFO [EFFICIENCY] All conditions performing well. No removals.
+2026-06-22 15:49:55 INFO 
+2026-06-22 15:49:55 INFO ============================================================
+2026-06-22 15:49:55 INFO Phase 2: Bayesian Optimization (local refinement -- focus on promising regions)
+2026-06-22 15:49:55 INFO ============================================================
+2026-06-22 15:49:55 INFO Bayesian: Starting | timeout=1181s (19.7m), max_trials=10000, startup=100
+2026-06-22 15:49:55 INFO   Each trial generates a strategy with random conditions, threshold, stop-loss, and risk-reward. The TPE model learns which parameter combinations score highest and focuses the search there.
+2026-06-22 15:49:55 INFO Bayesian: Seeded 10 strategies from GA.
+2026-06-22 16:09:37 INFO Bayesian: Manual timeout safety net triggered. Stopping.
+2026-06-22 16:09:37 INFO Bayesian: Finished | Best score: 0.5711 | 2869 trials | Elapsed: 1182s | Speed: 2.4 trials/s
+2026-06-22 16:09:37 INFO   Score = rr_per_day * drawdown_penalty * low_trades_penalty. Higher = better.
+2026-06-22 16:09:37 INFO Keeping existing best strategy (score: 0.5780) -- new strategy score (0.5711) is not higher.
+2026-06-22 16:09:37 INFO Top 500 strategies saved to C:\Users\xfide\documents\crypto.ai\models\top_strategies.json
+2026-06-22 16:09:37 INFO ============================================================
+2026-06-22 16:09:37 INFO Training finished.
+2026-06-22 16:09:37 INFO 
+2026-06-22 16:09:37 INFO   Best score:          0.5711
+2026-06-22 16:09:37 INFO   Best strategy:        (LONG:5 SHORT:2 SHARED:4)
+2026-06-22 16:09:37 INFO     Win rate:          43.3%
+2026-06-22 16:09:37 INFO     RR/day:            0.6109
+2026-06-22 16:09:37 INFO     Max drawdown:      17.3%
+2026-06-22 16:09:37 INFO     Valid trades:      300
+2026-06-22 16:09:37 INFO 
+2026-06-22 16:09:37 INFO   Total strategies tested: 14641
+2026-06-22 16:09:37 INFO   Time elapsed:        2401s (40.0m)
+2026-06-22 16:09:37 INFO   Average:             6.1 strats/sec
+2026-06-22 16:09:37 INFO   Existing best strategy retained (score: 0.5711)
+2026-06-22 16:09:37 INFO 
+2026-06-22 16:09:37 INFO   Next steps:
+2026-06-22 16:09:37 INFO     1. Review efficiency report above -- which conditions helped/hurt
+2026-06-22 16:09:37 INFO     2. Run validation: python validation.py --symbol BTC/USDT
+2026-06-22 16:09:37 INFO     3. If validation passes, go live: python live_signal.py
+2026-06-22 16:09:37 INFO ============================================================

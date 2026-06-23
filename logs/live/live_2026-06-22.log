@@ -1,0 +1,68 @@
+2026-06-22 17:06:21 INFO Live log: C:\Users\xfide\documents\crypto.ai\logs\live_2026-06-22.log
+2026-06-22 17:06:21 INFO ============================================================
+2026-06-22 17:06:21 INFO LIVE SIGNAL GENERATOR
+2026-06-22 17:06:21 INFO ============================================================
+2026-06-22 17:06:21 INFO Strategy loaded: strat_0f2aafbe
+2026-06-22 17:06:21 INFO   Direction mix: LONG:5 SHORT:5 SHARED:1
+2026-06-22 17:06:21 INFO   Conditions: 11
+2026-06-22 17:06:21 INFO   Threshold: 0.5205
+2026-06-22 17:06:21 INFO   SL_ATR_MULT: 1.8, RR: 3.4
+2026-06-22 17:06:21 INFO Symbol: BTC/USDT | Timeframe: 15m
+2026-06-22 17:06:21 INFO Checking for missed signals...
+2026-06-22 17:06:21 INFO Offline for less than 15 minutes. No missed signal check needed.
+2026-06-22 17:06:21 INFO Entering main loop. Waiting for candle closes...
+2026-06-22 17:06:21 INFO Fetching BTC/USDT 15m from 2026-06-17 11:06 to 2026-06-22 16:06
+2026-06-22 17:06:26 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 17:06:26 INFO Total candles available: 500
+2026-06-22 17:06:26 INFO Signal: SHORT at $64,709.99 | SL $65,118.25 | TP $63,321.89 | Strength LONG:60% SHORT:80% | Confidence 64% (7/11)
+2026-06-22 17:06:28 INFO Discord alert sent.
+2026-06-22 17:15:05 INFO Fetching BTC/USDT 15m from 2026-06-17 11:15 to 2026-06-22 16:15
+2026-06-22 17:15:12 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 17:15:12 INFO Total candles available: 500
+2026-06-22 17:15:12 INFO Position still open. Duration: 0h 8m. Price: $64,733.99
+2026-06-22 17:30:05 INFO Fetching BTC/USDT 15m from 2026-06-17 11:30 to 2026-06-22 16:30
+2026-06-22 17:30:13 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 17:30:13 INFO Total candles available: 500
+2026-06-22 17:30:13 INFO Position still open. Duration: 0h 23m. Price: $64,695.03
+2026-06-22 17:45:06 INFO Fetching BTC/USDT 15m from 2026-06-17 11:45 to 2026-06-22 16:45
+2026-06-22 17:45:14 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 17:45:15 INFO Total candles available: 500
+2026-06-22 17:45:15 INFO Position still open. Duration: 0h 38m. Price: $64,568.00
+2026-06-22 18:00:05 INFO Fetching BTC/USDT 15m from 2026-06-17 12:00 to 2026-06-22 17:00
+2026-06-22 18:00:16 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 18:00:16 INFO Total candles available: 500
+2026-06-22 18:00:16 INFO Position still open. Duration: 0h 53m. Price: $64,727.34
+2026-06-22 18:15:05 INFO Fetching BTC/USDT 15m from 2026-06-17 12:15 to 2026-06-22 17:15
+2026-06-22 18:15:11 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 18:15:11 INFO Total candles available: 500
+2026-06-22 18:15:11 INFO Position still open. Duration: 1h 8m. Price: $64,680.00
+2026-06-22 18:30:06 INFO Fetching BTC/USDT 15m from 2026-06-17 12:30 to 2026-06-22 17:30
+2026-06-22 18:30:12 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 18:30:12 INFO Total candles available: 500
+2026-06-22 18:30:12 INFO Position still open. Duration: 1h 23m. Price: $64,508.30
+2026-06-22 18:32:52 INFO Shutdown requested. Saving state...
+2026-06-22 18:33:03 INFO Live log: C:\Users\xfide\documents\crypto.ai\logs\live_2026-06-22.log
+2026-06-22 18:33:03 INFO ============================================================
+2026-06-22 18:33:03 INFO LIVE SIGNAL GENERATOR
+2026-06-22 18:33:03 INFO ============================================================
+2026-06-22 18:33:03 INFO Strategy loaded: strat_0f2aafbe
+2026-06-22 18:33:03 INFO   Direction mix: LONG:5 SHORT:5 SHARED:1
+2026-06-22 18:33:03 INFO   Conditions: 11
+2026-06-22 18:33:03 INFO   Threshold: 0.5205
+2026-06-22 18:33:03 INFO   SL_ATR_MULT: 1.8, RR: 3.4
+2026-06-22 18:33:03 INFO Symbol: BTC/USDT | Timeframe: 15m
+2026-06-22 18:33:03 INFO Resuming position (SHORT from 2026-06-22T16:06:26.933774+00:00). Scanning offline candles for missed exits...
+2026-06-22 18:33:03 INFO Fetching BTC/USDT 15m from 2026-06-17 12:33 to 2026-06-22 17:33
+2026-06-22 18:33:10 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 18:33:10 INFO Total candles available: 500
+2026-06-22 18:33:10 INFO No new candles since last check.
+2026-06-22 18:33:10 INFO Entering main loop. Waiting for candle closes...
+2026-06-22 18:33:10 INFO Fetching BTC/USDT 15m from 2026-06-17 12:33 to 2026-06-22 17:33
+2026-06-22 18:33:15 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 18:33:15 INFO Total candles available: 500
+2026-06-22 18:33:15 INFO Position still open. Duration: 1h 23m. Price: $64,469.29
+2026-06-22 18:45:05 INFO Fetching BTC/USDT 15m from 2026-06-17 12:45 to 2026-06-22 17:45
+2026-06-22 18:45:10 INFO Fetched 500 new candles in 1 requests.
+2026-06-22 18:45:10 INFO Total candles available: 500
+2026-06-22 18:45:10 INFO Position still open. Duration: 1h 38m. Price: $64,434.21
+2026-06-22 18:57:01 INFO Shutdown requested. Saving state...

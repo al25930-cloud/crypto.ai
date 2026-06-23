@@ -120,6 +120,7 @@ class LiveState:
         self.tp = tp
         self.direction = direction
         self.strategy_id = strategy_id
+        self.save()  # Persist immediately — never lose an open position
 
     def exit_position(self) -> None:
         self.in_position = False
@@ -130,6 +131,7 @@ class LiveState:
         self.tp = 0.0
         self.direction = ""
         self.strategy_id = ""
+        self.save()  # Persist immediately — never lose exit/cooldown state
 
 
 class LiveSignalGenerator:
@@ -191,6 +193,7 @@ class LiveSignalGenerator:
         """Run one check cycle."""
         now = datetime.now(timezone.utc)
         self.state.last_check_time = now.isoformat()
+        self.state.save()  # Save at start — ensures last_check_time and cooldown are persisted
 
         # Fetch latest candles
         df = get_latest_candles(self.symbol, self.timeframe, count=500)
@@ -237,71 +240,80 @@ class LiveSignalGenerator:
         latest_df = df.iloc[[-1]]  # Single-row DataFrame
         cond_df = compute_all_conditions(latest_df, conditions)
         last_row = cond_df.iloc[0]
-        conditions_met = int(last_row.sum())
-        conditions_total = len(conditions)
-        satisfaction = conditions_met / conditions_total if conditions_total > 0 else 0
 
-        if satisfaction >= strategy["threshold"]:
-            # Dynamic direction: compute per-direction strength
-            long_conds_list = [c for c in conditions if get_direction_for_condition(c) == 'LONG']
-            short_conds_list = [c for c in conditions if get_direction_for_condition(c) == 'SHORT']
-            long_true = int(last_row[long_conds_list].sum()) if long_conds_list else 0
-            short_true = int(last_row[short_conds_list].sum()) if short_conds_list else 0
-            long_strength = long_true / len(long_conds_list) if long_conds_list else 0
-            short_strength = short_true / len(short_conds_list) if short_conds_list else 0
+        # Single-gate entry: dominant direction strength must clear the strategy's threshold
+        # AND be at least DIRECTION_RATIO× stronger than the opposite. No overall satisfaction gate.
+        long_conds_list = [c for c in conditions if get_direction_for_condition(c) == 'LONG']
+        short_conds_list = [c for c in conditions if get_direction_for_condition(c) == 'SHORT']
+        long_true = int(last_row[long_conds_list].sum()) if long_conds_list else 0
+        short_true = int(last_row[short_conds_list].sum()) if short_conds_list else 0
+        long_strength = long_true / len(long_conds_list) if long_conds_list else 0
+        short_strength = short_true / len(short_conds_list) if short_conds_list else 0
 
-            if long_strength >= config.MIN_DIRECTION_STRENGTH and long_strength > short_strength * config.DIRECTION_RATIO:
-                direction = "LONG"
-            elif short_strength >= config.MIN_DIRECTION_STRENGTH and short_strength > long_strength * config.DIRECTION_RATIO:
-                direction = "SHORT"
-            else:
-                direction = None  # HOLD — ambiguous
+        if long_strength >= strategy["threshold"] and long_strength > short_strength * config.DIRECTION_RATIO:
+            direction = "LONG"
+        elif short_strength >= strategy["threshold"] and short_strength > long_strength * config.DIRECTION_RATIO:
+            direction = "SHORT"
+        else:
+            direction = None  # HOLD — ambiguous or insufficient strength
 
-            if direction is None:
-                logger.info(f"Conditions met but no clear direction (LONG:{long_strength:.0%} SHORT:{short_strength:.0%}). HOLD.")
-                return
-
-            sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))
-            rr = strategy["rr"]
-            atr_value = float(latest.get("atr_14", 0))
-            sl_distance = atr_value * sl_atr_mult
-
-            if direction == "LONG":
-                sl_price = price - sl_distance
-                tp_price = price + sl_distance * rr
-            else:
-                sl_price = price + sl_distance
-                tp_price = price - sl_distance * rr
-
-            # Enter position
-            self.state.enter_position(price, sl_price, tp_price, direction, strategy["id"])
-
-            confidence = satisfaction * 100
+        if direction is None:
             logger.info(
-                f"Signal: {direction} at ${price:,.2f} | "
-                f"SL ${sl_price:,.2f} | TP ${tp_price:,.2f} | "
-                f"Strength LONG:{long_strength:.0%} SHORT:{short_strength:.0%} | "
-                f"Confidence {confidence:.0f}% ({conditions_met}/{conditions_total})"
+                f"[HOLD] LONG:{long_strength:.0%} SHORT:{short_strength:.0%} "
+                f"(threshold {strategy['threshold']:.0%}, ratio {config.DIRECTION_RATIO})"
             )
+            return
 
-            # Get strategy historical metrics
-            rr_day = strategy.get("results", {}).get("rr_per_day", 0)
-            wr = strategy.get("results", {}).get("win_rate", 0)
+        # Confidence display: share of direction-relevant conditions that are true (direction + SHARED).
+        # The entry trigger uses pure-directional strength (excludes SHARED) so SHARED conditions don't
+        # swing the trade — this denominator is intentionally different to show how widely the trade
+        # context is confirmed.
+        dir_conditions = [c for c in conditions if get_direction_for_condition(c) == direction or get_direction_for_condition(c) == 'SHARED']
+        dir_met = int(last_row[dir_conditions].sum()) if dir_conditions else 0
+        dir_total = len(dir_conditions)
+        directional_satisfaction = dir_met / dir_total if dir_total > 0 else 0
 
-            send_entry_signal(
-                symbol=self.symbol,
-                direction=direction,
-                entry_price=price,
-                sl_price=sl_price,
-                tp_price=tp_price,
-                rr_ratio=rr,
-                confidence=confidence,
-                conditions_met=conditions_met,
-                conditions_total=conditions_total,
-                strategy_id=strategy["id"],
-                strategy_rr_day=rr_day,
-                strategy_win_rate=wr,
-            )
+        sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))
+        rr = strategy["rr"]
+        atr_value = float(latest.get("atr_14", 0))
+        sl_distance = atr_value * sl_atr_mult
+
+        if direction == "LONG":
+            sl_price = price - sl_distance
+            tp_price = price + sl_distance * rr
+        else:
+            sl_price = price + sl_distance
+            tp_price = price - sl_distance * rr
+
+        # Enter position
+        self.state.enter_position(price, sl_price, tp_price, direction, strategy["id"])
+
+        confidence = directional_satisfaction * 100
+        logger.info(
+            f"Signal: {direction} at ${price:,.2f} | "
+            f"SL ${sl_price:,.2f} | TP ${tp_price:,.2f} | "
+            f"Strength LONG:{long_strength:.0%} SHORT:{short_strength:.0%} | "
+            f"Confidence {confidence:.0f}% ({dir_met}/{dir_total} {direction}+SHARED)"
+        )
+
+        # Get strategy historical metrics
+        rr_day = strategy.get("results", {}).get("rr_per_day", 0)
+        wr = strategy.get("results", {}).get("win_rate", 0)
+
+        send_entry_signal(
+            symbol=self.symbol,
+            direction=direction,
+            entry_price=price,
+            sl_price=sl_price,
+            tp_price=tp_price,
+            rr_ratio=rr,
+            confidence=confidence,
+            conditions_met=dir_met,
+            conditions_total=dir_total,
+            strategy_id=strategy["id"],
+            strategy_rr_day=rr_day,
+            strategy_win_rate=wr,
+        )
 
     def _check_exit(self, current_price: float, candle_high: float, candle_low: float, ts: datetime) -> None:
         """Check if SL/TP/timeout should trigger an exit.
@@ -373,6 +385,14 @@ class LiveSignalGenerator:
         if self.state.last_check_time is None:
             return
 
+        # If already in a position, scan for missed SL/TP/timeout instead
+        if self.state.in_position:
+            try:
+                self._check_missed_exit()
+            except Exception as e:
+                logger.error(f"Error during missed exit scan: {e}. Continuing with normal exit monitoring.")
+            return
+
         logger.info("Checking for missed signals...")
         last_check = datetime.fromisoformat(self.state.last_check_time)
         if last_check.tzinfo is None:
@@ -412,51 +432,145 @@ class LiveSignalGenerator:
 
         for i in range(len(offline_df)):
             row = cond_df.iloc[i]
-            satisfaction = row.sum() / len(conditions) if conditions else 0
 
-            if satisfaction >= strategy["threshold"]:
-                ts = offline_df.iloc[i]["timestamp"]
-                price = float(offline_df.iloc[i]["close"])
-                # Dynamic direction for missed signal
-                miss_long = [c for c in conditions if get_direction_for_condition(c) == 'LONG']
-                miss_short = [c for c in conditions if get_direction_for_condition(c) == 'SHORT']
-                long_true = int(row[miss_long].sum()) if miss_long else 0
-                short_true = int(row[miss_short].sum()) if miss_short else 0
-                long_str = long_true / len(miss_long) if miss_long else 0
-                short_str = short_true / len(miss_short) if miss_short else 0
-                if long_str >= config.MIN_DIRECTION_STRENGTH and long_str > short_str * config.DIRECTION_RATIO:
-                    direction = "LONG"
-                elif short_str >= config.MIN_DIRECTION_STRENGTH and short_str > long_str * config.DIRECTION_RATIO:
-                    direction = "SHORT"
-                else:
-                    continue  # No clear direction, skip this missed signal
+            # Single-gate: dominant direction strength must clear threshold AND beat opposite by ratio
+            miss_long = [c for c in conditions if get_direction_for_condition(c) == 'LONG']
+            miss_short = [c for c in conditions if get_direction_for_condition(c) == 'SHORT']
+            long_true = int(row[miss_long].sum()) if miss_long else 0
+            short_true = int(row[miss_short].sum()) if miss_short else 0
+            long_str = long_true / len(miss_long) if miss_long else 0
+            short_str = short_true / len(miss_short) if miss_short else 0
 
-                sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))
-                rr = strategy["rr"]
-                atr_value = float(offline_df.iloc[i].get("atr_14", 0))
-                sl_distance = atr_value * sl_atr_mult
+            if long_str >= strategy["threshold"] and long_str > short_str * config.DIRECTION_RATIO:
+                direction = "LONG"
+            elif short_str >= strategy["threshold"] and short_str > long_str * config.DIRECTION_RATIO:
+                direction = "SHORT"
+            else:
+                continue  # No clear direction, skip this missed signal
 
-                if direction == "LONG":
-                    sl_price = price - sl_distance
-                    tp_price = price + sl_distance * rr
-                else:
-                    sl_price = price + sl_distance
-                    tp_price = price - sl_distance * rr
+            ts = offline_df.iloc[i]["timestamp"]
+            price = float(offline_df.iloc[i]["close"])
 
-                signal_time = pd.Timestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
-                logger.info(f"[RECOVERY] Missed signal: {direction} at ${price:,.2f} on {signal_time}")
+            sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))
+            rr = strategy["rr"]
+            atr_value = float(offline_df.iloc[i].get("atr_14", 0))
+            sl_distance = atr_value * sl_atr_mult
 
-                send_recovery_alert(
-                    symbol=self.symbol,
-                    direction=direction,
-                    entry_price=price,
-                    sl_price=sl_price,
-                    tp_price=tp_price,
-                    rr_ratio=rr,
-                    signal_time=signal_time,
-                    expired=True,
-                )
-                break  # Only report the first missed signal
+            if direction == "LONG":
+                sl_price = price - sl_distance
+                tp_price = price + sl_distance * rr
+            else:
+                sl_price = price + sl_distance
+                tp_price = price - sl_distance * rr
+
+            signal_time = pd.Timestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
+            logger.info(f"[RECOVERY] Missed signal: {direction} at ${price:,.2f} on {signal_time}")
+
+            send_recovery_alert(
+                symbol=self.symbol,
+                direction=direction,
+                entry_price=price,
+                sl_price=sl_price,
+                tp_price=tp_price,
+                rr_ratio=rr,
+                signal_time=signal_time,
+                expired=True,
+            )
+            break  # Only report the first missed signal
+
+    def _check_missed_exit(self) -> None:
+        """Scan candles since last check for SL/TP/timeout hits that occurred while offline."""
+        if not self.state.entry_time:
+            return
+
+        last_check = datetime.fromisoformat(self.state.last_check_time)
+        if last_check.tzinfo is None:
+            last_check = last_check.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        offline_hours = (now - last_check).total_seconds() / 3600
+
+        entry_dt = datetime.fromisoformat(self.state.entry_time)
+        if entry_dt.tzinfo is None:
+            entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+        max_duration = timedelta(hours=config.MAX_TRADE_DURATION_HOURS)
+
+        logger.info(f"Resuming position ({self.state.direction} from {self.state.entry_time}). Scanning offline candles for missed exits...")
+
+        # Fetch candles covering the offline period
+        df = get_latest_candles(self.symbol, self.timeframe, count=max(500, int(offline_hours * 4) + 100))
+        if df.empty:
+            logger.warning("No data for missed exit scan.")
+            return
+
+        df = compute_all_indicators(df.copy())
+        df = df.dropna().reset_index(drop=True)
+        if df.empty:
+            return
+
+        # Only scan candles after last check
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+        offline_df = df[df["timestamp"] > last_check].copy()
+        if offline_df.empty:
+            logger.info("No new candles since last check.")
+            return
+
+        direction = self.state.direction
+        entry_price = self.state.entry_price
+        sl_price = self.state.sl
+        tp_price = self.state.tp
+
+        for i in range(len(offline_df)):
+            candle = offline_df.iloc[i]
+            candle_high = float(candle["high"])
+            candle_low = float(candle["low"])
+            candle_close = float(candle["close"])
+            candle_ts = pd.Timestamp(candle["timestamp"]).to_pydatetime()
+
+            # Skip candles that predate the entry
+            if candle_ts <= entry_dt:
+                continue
+
+            duration = candle_ts - entry_dt
+
+            # Check timeout
+            if duration >= max_duration:
+                pnl_pct = self._calc_pnl(entry_price, candle_close, direction)
+                rr = self._calc_rr(entry_price, candle_close, direction, sl_price)
+                logger.info(f"[RECOVERY] Missed timeout exit at ${candle_close:,.2f} on {pd.Timestamp(candle_ts).strftime('%Y-%m-%d %H:%M')} after {duration}")
+                send_exit_alert(self.symbol, direction, entry_price, candle_close, "timeout", pnl_pct, rr, duration.total_seconds() / 60)
+                self.state.exit_position()
+                return
+
+            # Check SL/TP (conservative: SL first)
+            if direction == "LONG":
+                if candle_low <= sl_price:
+                    pnl_pct = self._calc_pnl(entry_price, sl_price, direction)
+                    logger.info(f"[RECOVERY] Missed SL hit at ${sl_price:,.2f} on {pd.Timestamp(candle_ts).strftime('%Y-%m-%d %H:%M')}")
+                    send_exit_alert(self.symbol, direction, entry_price, sl_price, "sl", pnl_pct, -1.0, duration.total_seconds() / 60)
+                    self.state.exit_position()
+                    return
+                if candle_high >= tp_price:
+                    pnl_pct = self._calc_pnl(entry_price, tp_price, direction)
+                    logger.info(f"[RECOVERY] Missed TP hit at ${tp_price:,.2f} on {pd.Timestamp(candle_ts).strftime('%Y-%m-%d %H:%M')}")
+                    send_exit_alert(self.symbol, direction, entry_price, tp_price, "tp", pnl_pct, self.strategy["rr"], duration.total_seconds() / 60)
+                    self.state.exit_position()
+                    return
+            else:  # SHORT
+                if candle_high >= sl_price:
+                    pnl_pct = self._calc_pnl(entry_price, sl_price, direction)
+                    logger.info(f"[RECOVERY] Missed SL hit at ${sl_price:,.2f} on {pd.Timestamp(candle_ts).strftime('%Y-%m-%d %H:%M')}")
+                    send_exit_alert(self.symbol, direction, entry_price, sl_price, "sl", pnl_pct, -1.0, duration.total_seconds() / 60)
+                    self.state.exit_position()
+                    return
+                if candle_low <= tp_price:
+                    pnl_pct = self._calc_pnl(entry_price, tp_price, direction)
+                    logger.info(f"[RECOVERY] Missed TP hit at ${tp_price:,.2f} on {pd.Timestamp(candle_ts).strftime('%Y-%m-%d %H:%M')}")
+                    send_exit_alert(self.symbol, direction, entry_price, tp_price, "tp", pnl_pct, self.strategy["rr"], duration.total_seconds() / 60)
+                    self.state.exit_position()
+                    return
+
+        # No SL/TP/timeout hit found during offline period — position still valid
+        logger.info(f"No missed exits found. Position still open ({self.state.direction}).")
 
     def _calc_pnl(self, entry: float, exit_price: float, direction: str) -> float:
         if direction == "LONG":
@@ -486,7 +600,7 @@ class LiveSignalGenerator:
 
     def _setup_file_logging(self) -> None:
         """Set up file logging for live mode."""
-        log_file = config.LOG_DIR / f"live_{datetime.now().strftime('%Y-%m-%d')}.log"
+        log_file = config.LOG_DIR_LIVE / f"live_{datetime.now().strftime('%Y-%m-%d')}.log"
         fh = logging.FileHandler(log_file)
         fh.setLevel(logging.INFO)
         fh.setFormatter(logging.Formatter(config.LOG_FORMAT, datefmt=config.DATE_FORMAT))

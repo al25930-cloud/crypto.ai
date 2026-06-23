@@ -1,0 +1,147 @@
+2026-06-20 12:01:44 INFO Training log: C:\Users\xfide\documents\crypto.ai\logs\training_2026-06-20_120144.log
+2026-06-20 12:01:44 INFO Training started | Method: ga_bayesian | Symbol: BTC/USDT | Timeframe: 15m | Duration: 2 min
+2026-06-20 12:01:44 INFO   Objective: Find the strategy with the highest score. Score = rr_per_day x drawdown_penalty x low_trades_penalty.
+2026-06-20 12:01:44 INFO   Disqualified if: win_rate < 35%, max_drawdown > 50%, or avg_trades/day outside 0.5-10.
+2026-06-20 12:01:44 INFO Loading historical data...
+2026-06-20 12:01:44 INFO Cache found: 17331 candles up to 2026-06-20 10:45:00+00:00. Fetching from 2026-06-20 11:00:00+00:00.
+2026-06-20 12:01:44 INFO Fetching BTC/USDT 15m from 2026-06-20 11:00 to 2026-06-20 11:01
+2026-06-20 12:01:50 INFO Fetched 1 new candles in 1 requests.
+2026-06-20 12:01:50 INFO Total candles available: 17332
+2026-06-20 12:01:50 INFO Raw data: 17332 candles
+2026-06-20 12:01:50 INFO Computing indicators...
+2026-06-20 12:01:50 INFO Data prepared: 17133 candles after warmup drop.
+2026-06-20 12:01:50 INFO Clean data: 17133 candles after warmup
+2026-06-20 12:01:50 INFO Pre-computing 53 conditions...
+2026-06-20 12:01:50 INFO Data preparation complete.
+2026-06-20 12:01:51 INFO ============================================================
+2026-06-20 12:01:51 INFO Phase 1: Genetic Algorithm (global search -- evolve strategies over generations)
+2026-06-20 12:01:51 INFO ============================================================
+2026-06-20 12:01:51 INFO GA: Starting | pop=200, gen=12, cx=0.8, mut=0.2, elite=5
+2026-06-20 12:01:51 INFO   Score = rr_per_day * drawdown_penalty * low_trades_penalty. Higher = better. Negative or -inf means disqualified.
+2026-06-20 12:02:13 INFO GA Gen 0/12 | Best score: 0.3271 | Avg score: 0.0453 | Pop: 200
+2026-06-20 12:02:41 INFO GA Gen 1/12 | Best score: 0.8450 | Avg score: 0.0742 | Tested: 357 [NEW BEST!]
+2026-06-20 12:03:09 INFO GA Gen 2/12 | Best score: 1.8250 | Avg score: 0.1177 | Tested: 514 [NEW BEST!]
+2026-06-20 12:03:37 INFO GA Gen 3/12 | Best score: 1.8250 | Avg score: 0.1875 | Tested: 679
+2026-06-20 12:04:17 INFO GA Gen 4/12 | Best score: 1.8250 | Avg score: 0.2034 | Tested: 843
+2026-06-20 12:04:54 INFO GA Gen 5/12 | Best score: 1.8250 | Avg score: 0.2190 | Tested: 1003
+2026-06-20 12:05:33 INFO GA Gen 6/12 | Best score: 1.8250 | Avg score: 0.2278 | Tested: 1167
+2026-06-20 12:06:12 INFO GA Gen 7/12 | Best score: 2.0750 | Avg score: 0.3014 | Tested: 1334 [NEW BEST!]
+2026-06-20 12:06:51 INFO GA Gen 8/12 | Best score: 2.0750 | Avg score: 0.2946 | Tested: 1500
+2026-06-20 12:07:33 INFO GA Gen 9/12 | Best score: 2.0750 | Avg score: 0.3271 | Tested: 1667
+2026-06-20 12:08:06 INFO GA Gen 10/12 | Best score: 2.0750 | Avg score: 0.4925 | Tested: 1835
+2026-06-20 12:08:32 INFO GA Gen 11/12 | Best score: 2.0750 | Avg score: 0.7836 | Tested: 1997 [NEW BEST!]
+2026-06-20 12:08:57 INFO GA Gen 12/12 | Best score: 2.2900 | Avg score: 1.2465 | Tested: 2161 [NEW BEST!]
+2026-06-20 12:08:57 INFO GA: Finished | Best score: 2.2900 | Total strategies tested: 2161 | Passing top 10 to Bayesian optimizer.
+2026-06-20 12:08:57 INFO GA Phase complete | Elapsed: 427s | Best score: 2.2900 | Strategies tested: 2161
+2026-06-20 12:08:57 INFO No time remaining for Bayesian optimization. Skipping.
+2026-06-20 12:08:57 INFO Strategy saved to C:\Users\xfide\documents\crypto.ai\models\best_strategy.json
+2026-06-20 12:08:58 INFO Top 500 strategies saved to C:\Users\xfide\documents\crypto.ai\models\top_strategies.json
+2026-06-20 12:08:58 INFO ============================================================
+2026-06-20 12:08:58 INFO EFFICIENCY REPORT
+2026-06-20 12:08:58 INFO ============================================================
+2026-06-20 12:08:58 INFO Strategies analyzed: 1765
+2026-06-20 12:08:58 INFO Global avg RR/day: 0.5877
+2026-06-20 12:08:58 INFO 
+2026-06-20 12:08:58 INFO [CRITICAL] CRITICAL ALERTS (auto-removed):
+2026-06-20 12:08:58 INFO   'ema_9_gt_21' (LONG) | Used: 112 | Top10%: 0 | Avg RR/day: 0.07 (global: 0.59) | WR: 47% | Eff: 0.11
+2026-06-20 12:08:58 INFO   'ema_12_gt_26' (LONG) | Used: 173 | Top10%: 3 | Avg RR/day: 0.15 (global: 0.59) | WR: 48% | Eff: 0.25
+2026-06-20 12:08:58 INFO   'ema_20_gt_50' (LONG) | Used: 126 | Top10%: 1 | Avg RR/day: 0.09 (global: 0.59) | WR: 47% | Eff: 0.15
+2026-06-20 12:08:58 INFO   'sma_20_gt_50' (LONG) | Used: 156 | Top10%: 3 | Avg RR/day: 0.14 (global: 0.59) | WR: 48% | Eff: 0.24
+2026-06-20 12:08:58 INFO   'price_gt_sma_50' (LONG) | Used: 111 | Top10%: 3 | Avg RR/day: 0.16 (global: 0.59) | WR: 47% | Eff: 0.27
+2026-06-20 12:08:58 INFO   'price_gt_sma_200' (LONG) | Used: 94 | Top10%: 0 | Avg RR/day: 0.06 (global: 0.59) | WR: 46% | Eff: 0.10
+2026-06-20 12:08:58 INFO   'macd_gt_signal' (LONG) | Used: 85 | Top10%: 0 | Avg RR/day: 0.08 (global: 0.59) | WR: 43% | Eff: 0.13
+2026-06-20 12:08:58 INFO   'macd_hist_gt_0' (LONG) | Used: 66 | Top10%: 1 | Avg RR/day: 0.08 (global: 0.59) | WR: 43% | Eff: 0.14
+2026-06-20 12:08:58 INFO   'rsi_14_gt_50' (LONG) | Used: 56 | Top10%: 0 | Avg RR/day: 0.03 (global: 0.59) | WR: 43% | Eff: 0.05
+2026-06-20 12:08:58 INFO   'rsi_14_lt_30' (LONG) | Used: 67 | Top10%: 1 | Avg RR/day: 0.10 (global: 0.59) | WR: 45% | Eff: 0.17
+2026-06-20 12:08:58 INFO   'rsi_21_gt_50' (LONG) | Used: 84 | Top10%: 0 | Avg RR/day: 0.08 (global: 0.59) | WR: 44% | Eff: 0.14
+2026-06-20 12:08:58 INFO   'rsi_21_lt_30' (LONG) | Used: 53 | Top10%: 0 | Avg RR/day: 0.04 (global: 0.59) | WR: 43% | Eff: 0.06
+2026-06-20 12:08:58 INFO   'stoch_k_gt_20' (LONG) | Used: 61 | Top10%: 1 | Avg RR/day: 0.06 (global: 0.59) | WR: 44% | Eff: 0.11
+2026-06-20 12:08:58 INFO   'stoch_k_lt_80' (LONG) | Used: 110 | Top10%: 3 | Avg RR/day: 0.16 (global: 0.59) | WR: 46% | Eff: 0.28
+2026-06-20 12:08:58 INFO   'cci_14_gt_-100' (LONG) | Used: 64 | Top10%: 0 | Avg RR/day: 0.08 (global: 0.59) | WR: 45% | Eff: 0.13
+2026-06-20 12:08:58 INFO   'cci_14_lt_100' (LONG) | Used: 147 | Top10%: 0 | Avg RR/day: 0.10 (global: 0.59) | WR: 47% | Eff: 0.17
+2026-06-20 12:08:58 INFO   'williams_gt_-80' (LONG) | Used: 63 | Top10%: 0 | Avg RR/day: 0.05 (global: 0.59) | WR: 44% | Eff: 0.08
+2026-06-20 12:08:58 INFO   'williams_lt_-20' (LONG) | Used: 128 | Top10%: 0 | Avg RR/day: 0.08 (global: 0.59) | WR: 46% | Eff: 0.13
+2026-06-20 12:08:58 INFO   'price_lt_bb_lower_20_2' (LONG) | Used: 70 | Top10%: 0 | Avg RR/day: 0.09 (global: 0.59) | WR: 44% | Eff: 0.16
+2026-06-20 12:08:58 INFO   'price_gt_bb_upper_20_2' (LONG) | Used: 119 | Top10%: 0 | Avg RR/day: 0.11 (global: 0.59) | WR: 47% | Eff: 0.18
+2026-06-20 12:08:58 INFO   'price_lt_bb_lower_20_1_5' (LONG) | Used: 71 | Top10%: 0 | Avg RR/day: 0.06 (global: 0.59) | WR: 43% | Eff: 0.10
+2026-06-20 12:08:58 INFO   'price_gt_bb_upper_20_1_5' (LONG) | Used: 144 | Top10%: 1 | Avg RR/day: 0.14 (global: 0.59) | WR: 48% | Eff: 0.23
+2026-06-20 12:08:58 INFO 
+2026-06-20 12:08:58 INFO [ALERT] ALERTS (consider removing):
+2026-06-20 12:08:58 INFO   'ema_9_lt_21' (SHORT) | Used: 346 | Top10%: 2 | Avg RR/day: 0.22 (global: 0.59) | WR: 44% | Eff: 0.37
+2026-06-20 12:08:58 INFO   'sma_20_lt_50' (SHORT) | Used: 481 | Top10%: 2 | Avg RR/day: 0.22 (global: 0.59) | WR: 45% | Eff: 0.38
+2026-06-20 12:08:58 INFO   'macd_lt_signal' (SHORT) | Used: 327 | Top10%: 4 | Avg RR/day: 0.28 (global: 0.59) | WR: 46% | Eff: 0.47
+2026-06-20 12:08:58 INFO   'rsi_14_lt_50' (SHORT) | Used: 473 | Top10%: 9 | Avg RR/day: 0.28 (global: 0.59) | WR: 48% | Eff: 0.48
+2026-06-20 12:08:58 INFO   'stoch_k_lt_20' (SHORT) | Used: 422 | Top10%: 1 | Avg RR/day: 0.23 (global: 0.59) | WR: 45% | Eff: 0.39
+2026-06-20 12:08:58 INFO   'price_lt_bb_lower_20_2_s' (SHORT) | Used: 678 | Top10%: 7 | Avg RR/day: 0.29 (global: 0.59) | WR: 48% | Eff: 0.50
+2026-06-20 12:08:58 INFO   'price_lt_bb_lower_20_1_5_s' (SHORT) | Used: 591 | Top10%: 6 | Avg RR/day: 0.29 (global: 0.59) | WR: 47% | Eff: 0.49
+2026-06-20 12:08:58 INFO   'atr_gt_sma_atr_20' (SHARED) | Used: 463 | Top10%: 1 | Avg RR/day: 0.19 (global: 0.59) | WR: 46% | Eff: 0.33
+2026-06-20 12:08:58 INFO   'volume_gt_sma_20_2_0' (SHARED) | Used: 495 | Top10%: 0 | Avg RR/day: 0.20 (global: 0.59) | WR: 45% | Eff: 0.33
+2026-06-20 12:08:58 INFO   'adx_14_gt_25' (SHARED) | Used: 447 | Top10%: 0 | Avg RR/day: 0.18 (global: 0.59) | WR: 44% | Eff: 0.31
+2026-06-20 12:08:58 INFO   'adx_14_lt_20' (SHARED) | Used: 580 | Top10%: 6 | Avg RR/day: 0.27 (global: 0.59) | WR: 47% | Eff: 0.46
+2026-06-20 12:08:58 INFO   'price_gt_high_20_1_02' (SHARED) | Used: 376 | Top10%: 5 | Avg RR/day: 0.20 (global: 0.59) | WR: 47% | Eff: 0.35
+2026-06-20 12:08:58 INFO 
+2026-06-20 12:08:58 INFO [WARNING] WARNINGS (insufficient data):
+2026-06-20 12:08:58 INFO   'ema_20_lt_50' (SHORT) | Used: 649 | Top10%: 25 | Avg RR/day: 0.38 (global: 0.59) | WR: 49% | Eff: 0.65
+2026-06-20 12:08:58 INFO   'price_lt_sma_200' (SHORT) | Used: 523 | Top10%: 5 | Avg RR/day: 0.30 (global: 0.59) | WR: 46% | Eff: 0.51
+2026-06-20 12:08:58 INFO   'cci_14_gt_100' (SHORT) | Used: 622 | Top10%: 12 | Avg RR/day: 0.32 (global: 0.59) | WR: 49% | Eff: 0.54
+2026-06-20 12:08:58 INFO   'williams_gt_-20' (SHORT) | Used: 704 | Top10%: 15 | Avg RR/day: 0.34 (global: 0.59) | WR: 49% | Eff: 0.57
+2026-06-20 12:08:58 INFO   'price_gt_bb_upper_20_2_s' (SHORT) | Used: 604 | Top10%: 13 | Avg RR/day: 0.34 (global: 0.59) | WR: 49% | Eff: 0.59
+2026-06-20 12:08:58 INFO 
+2026-06-20 12:08:58 INFO [STRONG] STRONG CONDITIONS:
+2026-06-20 12:08:58 INFO   'ema_12_lt_26' (SHORT) | Used: 1017 | Top10%: 174 | Avg RR/day: 0.87 (global: 0.59) | WR: 56% | Eff: 1.48
+2026-06-20 12:08:58 INFO   'price_lt_sma_50' (SHORT) | Used: 924 | Top10%: 165 | Avg RR/day: 0.88 (global: 0.59) | WR: 56% | Eff: 1.49
+2026-06-20 12:08:58 INFO   'macd_hist_lt_0' (SHORT) | Used: 901 | Top10%: 161 | Avg RR/day: 0.87 (global: 0.59) | WR: 55% | Eff: 1.48
+2026-06-20 12:08:58 INFO   'rsi_14_gt_70' (SHORT) | Used: 782 | Top10%: 162 | Avg RR/day: 0.98 (global: 0.59) | WR: 57% | Eff: 1.67
+2026-06-20 12:08:58 INFO   'rsi_21_lt_50' (SHORT) | Used: 976 | Top10%: 138 | Avg RR/day: 0.78 (global: 0.59) | WR: 54% | Eff: 1.33
+2026-06-20 12:08:58 INFO   'rsi_21_gt_70' (SHORT) | Used: 887 | Top10%: 167 | Avg RR/day: 0.92 (global: 0.59) | WR: 57% | Eff: 1.56
+2026-06-20 12:08:58 INFO   'stoch_k_gt_80' (SHORT) | Used: 879 | Top10%: 164 | Avg RR/day: 0.91 (global: 0.59) | WR: 56% | Eff: 1.55
+2026-06-20 12:08:58 INFO   'cci_14_lt_-100' (SHORT) | Used: 882 | Top10%: 168 | Avg RR/day: 0.94 (global: 0.59) | WR: 57% | Eff: 1.60
+2026-06-20 12:08:58 INFO   'williams_lt_-80' (SHORT) | Used: 858 | Top10%: 165 | Avg RR/day: 0.94 (global: 0.59) | WR: 56% | Eff: 1.59
+2026-06-20 12:08:58 INFO   'price_gt_bb_upper_20_1_5_s' (SHORT) | Used: 720 | Top10%: 165 | Avg RR/day: 1.09 (global: 0.59) | WR: 59% | Eff: 1.86
+2026-06-20 12:08:58 INFO   'volume_gt_sma_20_1_5' (SHARED) | Used: 1147 | Top10%: 173 | Avg RR/day: 0.78 (global: 0.59) | WR: 55% | Eff: 1.33
+2026-06-20 12:08:58 INFO   'obv_gt_sma_obv_20' (SHARED) | Used: 888 | Top10%: 164 | Avg RR/day: 0.90 (global: 0.59) | WR: 56% | Eff: 1.53
+2026-06-20 12:08:58 INFO   'adx_14_gt_30' (SHARED) | Used: 1028 | Top10%: 173 | Avg RR/day: 0.85 (global: 0.59) | WR: 55% | Eff: 1.45
+2026-06-20 12:08:58 INFO   'price_lt_low_20_0_98' (SHARED) | Used: 980 | Top10%: 163 | Avg RR/day: 0.86 (global: 0.59) | WR: 56% | Eff: 1.46
+2026-06-20 12:08:58 INFO 
+2026-06-20 12:08:58 INFO Auto-removed 22 conditions: ['ema_9_gt_21', 'ema_12_gt_26', 'ema_20_gt_50', 'sma_20_gt_50', 'price_gt_sma_50', 'price_gt_sma_200', 'macd_gt_signal', 'macd_hist_gt_0', 'rsi_14_gt_50', 'rsi_14_lt_30', 'rsi_21_gt_50', 'rsi_21_lt_30', 'stoch_k_gt_20', 'stoch_k_lt_80', 'cci_14_gt_-100', 'cci_14_lt_100', 'williams_gt_-80', 'williams_lt_-20', 'price_lt_bb_lower_20_2', 'price_gt_bb_upper_20_2', 'price_lt_bb_lower_20_1_5', 'price_gt_bb_upper_20_1_5']
+2026-06-20 12:08:58 INFO ============================================================
+2026-06-20 12:08:58 INFO Efficiency report saved to C:\Users\xfide\documents\crypto.ai\models\condition_efficiency.json
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'rsi_21_lt_30' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'stoch_k_gt_20' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'stoch_k_lt_80' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'cci_14_gt_-100' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'cci_14_lt_100' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'williams_gt_-80' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'williams_lt_-20' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'price_lt_bb_lower_20_2' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'price_gt_bb_upper_20_2' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'price_lt_bb_lower_20_1_5' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Skipping removal of 'price_gt_bb_upper_20_1_5' -- LONG pool would drop below 20
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'ema_9_gt_21' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'ema_12_gt_26' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'ema_20_gt_50' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'sma_20_gt_50' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'price_gt_sma_50' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'price_gt_sma_200' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'macd_gt_signal' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'macd_hist_gt_0' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'rsi_14_gt_50' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'rsi_14_lt_30' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] Condition 'rsi_21_gt_50' removed from pool (efficiency < 0.3).
+2026-06-20 12:08:58 INFO [EFFICIENCY] 11 condition(s) kept due to pool size floor: ['rsi_21_lt_30', 'stoch_k_gt_20', 'stoch_k_lt_80', 'cci_14_gt_-100', 'cci_14_lt_100', 'williams_gt_-80', 'williams_lt_-20', 'price_lt_bb_lower_20_2', 'price_gt_bb_upper_20_2', 'price_lt_bb_lower_20_1_5', 'price_gt_bb_upper_20_1_5']
+2026-06-20 12:08:58 INFO ============================================================
+2026-06-20 12:08:58 INFO Training finished.
+2026-06-20 12:08:58 INFO 
+2026-06-20 12:08:58 INFO   Best score:          2.2900
+2026-06-20 12:08:58 INFO   Best strategy:       
+2026-06-20 12:08:58 INFO 
+2026-06-20 12:08:58 INFO   Total strategies tested: 2161
+2026-06-20 12:08:58 INFO   Time elapsed:        433s (7.2m)
+2026-06-20 12:08:58 INFO   Average:             5.0 strats/sec
+2026-06-20 12:08:58 INFO   Best strategy saved to C:\Users\xfide\documents\crypto.ai\models\best_strategy.json
+2026-06-20 12:08:58 INFO 
+2026-06-20 12:08:58 INFO   Next steps:
+2026-06-20 12:08:58 INFO     1. Review efficiency report above -- which conditions helped/hurt
+2026-06-20 12:08:58 INFO     2. Run validation: python validation.py --symbol BTC/USDT
+2026-06-20 12:08:58 INFO     3. If validation passes, go live: python live_signal.py
+2026-06-20 12:08:58 INFO ============================================================

@@ -437,7 +437,7 @@ python live_signal.py --symbol BTC/USDT
 1. **Startup**: Loads the best strategy from `models/best_strategy.json`
 2. **Missed signal check**: Scans for signals that fired while you were offline
 3. **Main loop**: Every 15 minutes (at candle close), evaluates the strategy conditions
-4. **Direction decision**: Counts how many LONG vs SHORT conditions are true, determines direction using `MIN_DIRECTION_STRENGTH` (60%) and `DIRECTION_RATIO` (1.3×)
+4. **Direction decision** (single gate): The dominant direction's strength (`true / total conditions in that direction`) must clear the strategy's threshold (per-strategy, evolved by GA) AND be at least `DIRECTION_RATIO` (1.3×) stronger than the opposite direction. There is no overall satisfaction gate — a candle with 4/5 LONG true and 0/5 SHORT true qualifies as a LONG signal even if the overall ratio is 40%.
 5. **Signal detection**: If conditions are met and direction is clear, sends a Discord alert with entry price, SL, TP
 6. **Exit tracking**: Monitors the open position for SL/TP hits or 24-hour timeout
 7. **Cooldown**: After any exit, waits 4 candles (1 hour) before looking for new signals
@@ -551,7 +551,7 @@ Strategies no longer have a fixed direction (LONG or SHORT). Instead, each strat
 
 Once in a position, all signals are ignored until the trade exits via SL, TP, or timeout. No mid-trade flipping.
 
-The thresholds (`MIN_DIRECTION_STRENGTH=0.60` and `DIRECTION_RATIO=1.3`) are fixed system-wide in `config.py` — they are NOT evolved per strategy. This prevents the optimizer from finding strategies that enter on weak or ambiguous signals.
+`DIRECTION_RATIO=1.3` is fixed system-wide in `config.py` — it is NOT evolved per strategy, since the ratio requirement prevents the optimizer from finding strategies that enter on weak or ambiguous signals. The direction strength threshold is now the same as the strategy's `threshold` (per-strategy, evolved by GA).
 
 ### ATR-Based Stop Loss and Take Profit
 
@@ -635,7 +635,6 @@ All parameters are in `config.py`. Here's the complete list:
 ### Dynamic Direction Thresholds
 | Parameter | Default | Description |
 |---|---|---|
-| `MIN_DIRECTION_STRENGTH` | `0.60` | Minimum true-condition ratio for dominant direction (60%) |
 | `DIRECTION_RATIO` | `1.3` | Dominant direction must be ≥1.3× stronger than opposite |
 
 These are **fixed system-wide thresholds** — not evolved per strategy. They ensure entries only happen when there's a clear directional consensus. Users can adjust them globally in `config.py`.

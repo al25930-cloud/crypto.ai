@@ -81,6 +81,7 @@ def run_validation(
         Dict with all validation metrics and acceptance check results.
     """
     config.setup_logging()
+    _setup_validation_file_logging()
     logger.info("=" * 60)
     logger.info("VALIDATION BACKTEST")
     logger.info("=" * 60)
@@ -254,6 +255,16 @@ def _log_validation_report(report: dict) -> None:
     else:
         logger.info("  SOME ACCEPTANCE CRITERIA FAILED -- consider retraining")
     logger.info("=" * 60)
+
+
+def _setup_validation_file_logging() -> None:
+    """Set up file logging for validation."""
+    log_file = config.LOG_DIR_VALIDATION / f"validation_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.log"
+    fh = logging.FileHandler(log_file)
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(logging.Formatter(config.LOG_FORMAT, datefmt=config.DATE_FORMAT))
+    logging.getLogger().addHandler(fh)
+    logger.info(f"Validation log: {log_file}")
 
 
 def main():

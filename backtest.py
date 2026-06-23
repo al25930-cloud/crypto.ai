@@ -95,12 +95,6 @@ def backtest_strategy(
     if conditions_df is None:
         conditions_df = compute_all_conditions(df, conditions)
 
-    # Pre-compute the condition satisfaction ratio as a vectorized Series
-    if len(conditions) == 0:
-        satisfaction = pd.Series(0.0, index=df.index)
-    else:
-        satisfaction = conditions_df[conditions].sum(axis=1) / len(conditions)
-
     # Pre-compute category masks for dynamic direction
     # Use actual conditions_df columns for index mapping (robust against filtered conditions)
     col_list = list(conditions_df.columns) if conditions_df is not None else conditions
@@ -114,7 +108,6 @@ def backtest_strategy(
     highs = df["high"].values
     lows = df["low"].values
     timestamps = df["timestamp"].values
-    satisfies = satisfaction.values
     atr_values = df["atr_14"].values
     # Pre-convert conditions DataFrame to numpy for fast per-candle category lookups
     cond_values = conditions_df.values if conditions_df is not None and len(conditions_df) > 0 else None
@@ -246,38 +239,36 @@ def backtest_strategy(
             if cooldown_remaining > 0:
                 cooldown_remaining -= 1
             else:
-                # Overall signal strength check
-                if satisfies[i] >= threshold:
-                    # Calculate per-direction strength using pre-converted numpy array
-                    long_true = int(cond_values[i, long_indices].sum()) if cond_values is not None and total_long > 0 else 0
-                    short_true = int(cond_values[i, short_indices].sum()) if cond_values is not None and total_short > 0 else 0
+                # Single-gate entry: dominant direction strength must clear the strategy's threshold
+                # AND be at least DIRECTION_RATIO× stronger than the opposite. No overall satisfaction gate.
+                long_true = int(cond_values[i, long_indices].sum()) if cond_values is not None and total_long > 0 else 0
+                short_true = int(cond_values[i, short_indices].sum()) if cond_values is not None and total_short > 0 else 0
 
-                    long_strength = long_true / total_long if total_long > 0 else 0
-                    short_strength = short_true / total_short if total_short > 0 else 0
+                long_strength = long_true / total_long if total_long > 0 else 0
+                short_strength = short_true / total_short if total_short > 0 else 0
 
-                    # Determine direction based on strength and ratio
-                    if long_strength >= config.MIN_DIRECTION_STRENGTH and long_strength > short_strength * config.DIRECTION_RATIO:
-                        direction = "LONG"
-                    elif short_strength >= config.MIN_DIRECTION_STRENGTH and short_strength > long_strength * config.DIRECTION_RATIO:
-                        direction = "SHORT"
-                    else:
-                        direction = None  # HOLD — ambiguous
+                if long_strength >= threshold and long_strength > short_strength * config.DIRECTION_RATIO:
+                    direction = "LONG"
+                elif short_strength >= threshold and short_strength > long_strength * config.DIRECTION_RATIO:
+                    direction = "SHORT"
+                else:
+                    direction = None  # HOLD — ambiguous or insufficient strength
 
-                    if direction is not None:
-                        in_position = True
-                        current_direction = direction
-                        entry_price = closes[i]
-                        entry_time = ts
-                        entry_idx = i  # Store index for ATR lookup on exit
-                        atr_at_entry = atr_values[i]
-                        sl_distance = atr_at_entry * sl_atr_mult
+                if direction is not None:
+                    in_position = True
+                    current_direction = direction
+                    entry_price = closes[i]
+                    entry_time = ts
+                    entry_idx = i  # Store index for ATR lookup on exit
+                    atr_at_entry = atr_values[i]
+                    sl_distance = atr_at_entry * sl_atr_mult
 
-                        if direction == "LONG":
-                            sl_price = entry_price - sl_distance
-                            tp_price = entry_price + sl_distance * rr_ratio
-                        else:  # SHORT
-                            sl_price = entry_price + sl_distance
-                            tp_price = entry_price - sl_distance * rr_ratio
+                    if direction == "LONG":
+                        sl_price = entry_price - sl_distance
+                        tp_price = entry_price + sl_distance * rr_ratio
+                    else:  # SHORT
+                        sl_price = entry_price + sl_distance
+                        tp_price = entry_price - sl_distance * rr_ratio
 
             equity_curve.append(equity)
 

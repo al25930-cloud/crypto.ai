@@ -92,7 +92,7 @@ class TrainingSession:
     def _setup_logging(self) -> None:
         """Set up file logging for this training session."""
         config.setup_logging()
-        log_file = config.LOG_DIR / f"training_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.log"
+        log_file = config.LOG_DIR_TRAINING / f"training_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.log"
         fh = logging.FileHandler(log_file)
         fh.setLevel(logging.INFO)
         fh.setFormatter(logging.Formatter(config.LOG_FORMAT, datefmt=config.DATE_FORMAT))
