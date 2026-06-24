@@ -1,0 +1,28 @@
+2026-06-23 18:20:11 INFO Training log: C:\Users\xfide\documents\crypto.ai\logs\training\training_2026-06-23_182011.log
+2026-06-23 18:20:11 INFO Training started | Method: ga_bayesian | Symbol: BTC/USDT | Timeframe: 15m | Duration: 15 min
+2026-06-23 18:20:11 INFO   Objective: Find the strategy with the highest score. Score = rr_per_day x drawdown_penalty x low_trades_penalty.
+2026-06-23 18:20:11 INFO   Disqualified if: trades/day < 1.2, win_rate < 35%, max_drawdown > 50%, or avg_trades/day outside 0.5-10.
+2026-06-23 18:20:11 INFO Loading historical data...
+2026-06-23 18:20:12 INFO Cache found: 17644 candles up to 2026-06-23 17:00:00+00:00. Fetching from 2026-06-23 17:15:00+00:00.
+2026-06-23 18:20:12 INFO Fetching BTC/USDT 15m from 2026-06-23 17:15 to 2026-06-23 17:20
+2026-06-23 18:20:16 INFO Fetched 1 new candles in 1 requests.
+2026-06-23 18:20:16 INFO Total candles available: 17645
+2026-06-23 18:20:16 INFO Raw data: 17645 candles (2025-12-21 to 2026-06-23, 12 months)
+2026-06-23 18:20:16 INFO Computing indicators...
+2026-06-23 18:20:16 INFO Data prepared: 17446 candles after warmup drop.
+2026-06-23 18:20:16 INFO Clean data: 17446 candles after warmup
+2026-06-23 18:20:16 INFO Pre-computing 53 conditions...
+2026-06-23 18:20:16 INFO Data preparation complete.
+2026-06-23 18:20:17 INFO ============================================================
+2026-06-23 18:20:17 INFO Phase 1: Genetic Algorithm (global search -- evolve strategies over generations)
+2026-06-23 18:20:17 INFO ============================================================
+2026-06-23 18:20:17 INFO [COVERAGE] 53 conditions need more evaluations (target: 5 each). Generating seed strategies.
+2026-06-23 18:20:17 INFO [COVERAGE] Generated 5 seed strategies for condition coverage.
+2026-06-23 18:20:17 INFO GA: Starting | pop=200, time_budget=450s (7.5m), max_gen=200, cx=0.8, mut=0.2, elite=5
+2026-06-23 18:20:17 INFO   Score = rr_per_day * drawdown_penalty * low_trades_penalty. Higher = better. Negative or -inf means disqualified.
+2026-06-23 18:20:17 INFO GA: Seeded 5 individuals into initial population.
+2026-06-23 18:21:15 INFO GA Gen 0 | Best score: 0.0040 | Avg score: 0.0022 | Pop: 200 | Elapsed: 58s
+2026-06-23 18:22:06 INFO GA Gen 1 | Best score: 0.0040 | Avg score: 0.0011 | Tested: 360 | Elapsed: 110s
+2026-06-23 18:22:48 INFO GA Gen 2 | Best score: 0.0040 | Avg score: 0.0011 | Tested: 522 | Elapsed: 152s
+2026-06-23 18:23:27 INFO GA Gen 3 | Best score: 0.0040 | Avg score: 0.0009 | Tested: 682 | Elapsed: 191s
+2026-06-23 18:24:04 INFO GA Gen 4 | Best score: 0.0040 | Avg score: 0.0008 | Tested: 853 | Elapsed: 227s

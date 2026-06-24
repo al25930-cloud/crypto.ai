@@ -17,7 +17,7 @@ import uuid
 from typing import Callable, Optional
 
 import config
-from conditions import ALL_CONDITIONS, get_condition_count_range, get_direction_for_condition
+from conditions import ALL_CONDITIONS, CONDITIONS_SHARED, get_condition_count_range, get_direction_for_condition
 from strategy import _load_removed_conditions, _load_condition_weights
 
 logger = logging.getLogger(__name__)
@@ -178,7 +178,7 @@ class BayesianOptimizer:
         # Build best strategy
         if self.best_strategy is None:
             logger.warning("Bayesian: No valid strategy found.")
-            return {"id": "none", "conditions": [], "threshold": 0.5, "sl_atr_mult": 1.5, "rr": 2.0, "score": float("-inf"), "method": "bayesian"}
+            return {"id": "none", "conditions": [], "shared_conditions": [], "shared_bonus_weight": 0.0, "threshold": 0.5, "sl_atr_mult": 1.5, "rr": 2.0, "score": float("-inf"), "method": "bayesian"}
 
         best = self.best_strategy.copy()
         best["score"] = self.best_score
@@ -204,9 +204,9 @@ class BayesianOptimizer:
         Instead of generating conditions from scratch (which creates an impossibly
         large search space for TPE), this method:
         1. Picks a base strategy from the GA seeds via base_idx
-        2. Copies its conditions
+        2. Copies its conditions + shared_conditions
         3. Applies light mutation (0-2 condition swaps)
-        4. Lets TPE optimize the continuous parameters (threshold, sl_atr_mult, rr)
+        4. Lets TPE optimize the continuous parameters (threshold, sl_atr_mult, rr, shared_bonus_weight)
 
         Args:
             trial: Optuna trial object.
@@ -219,23 +219,26 @@ class BayesianOptimizer:
             base_idx = trial.suggest_categorical("base_idx", list(range(len(self._seed_strategies))))
             base = self._seed_strategies[base_idx]
             conditions = list(base["conditions"])
+            shared_conditions = list(base.get("shared_conditions", []))
         else:
             # Fallback: generate random conditions if no seeds
             conditions = self._generate_random_conditions()
+            shared_conditions = []
 
-        # Step 2: Light condition mutation (0-2 swaps, same direction)
+        # Step 2: Light condition mutation (0-2 swaps on core conditions)
         num_swaps = rng.randint(0, _MAX_CONDITION_SWAPS)
         for _ in range(num_swaps):
             conditions = self._swap_one_condition(conditions)
 
-        # Ensure balance after mutation
+        # Ensure balance after mutation, then trim preserving balance
         self._ensure_balance(conditions)
 
-        # Cap at max condition count (matching GA behavior)
+        # Cap at max condition count while preserving at least 2 LONG + 2 SHORT
         _, max_count = get_condition_count_range(len(ALL_CONDITIONS))
-        conditions = conditions[:max_count]
+        if len(conditions) > max_count:
+            self._trim_preserving_balance(conditions, max_count)
 
-        # Step 3: TPE optimizes the continuous parameters
+        # Step 3: TPE optimizes the continuous parameters (including shared_bonus_weight)
         threshold = round(
             trial.suggest_float("threshold", config.MIN_THRESHOLD, config.MAX_THRESHOLD), 4
         )
@@ -245,10 +248,15 @@ class BayesianOptimizer:
         rr = round(
             trial.suggest_float("rr", config.MIN_RR, config.MAX_RR), 2
         )
+        shared_bonus_weight = round(
+            trial.suggest_float("shared_bonus_weight", config.MIN_SHARED_BONUS_WEIGHT, config.MAX_SHARED_BONUS_WEIGHT), 4
+        )
 
         return {
             "id": f"strat_{uuid.uuid4().hex[:8]}",
             "conditions": conditions,
+            "shared_conditions": shared_conditions,
+            "shared_bonus_weight": shared_bonus_weight,
             "threshold": threshold,
             "sl_atr_mult": sl_atr_mult,
             "rr": rr,
@@ -258,8 +266,11 @@ class BayesianOptimizer:
     def _swap_one_condition(self, conditions: list[str]) -> list[str]:
         """Swap one random condition for another of the same direction.
 
+        Note: SHARED conditions are NOT in the core conditions list — they are in
+        the separate shared_conditions field. So this only swaps LONG/SHORT conditions.
+
         Args:
-            conditions: Current condition list.
+            conditions: Current condition list (core LONG/SHORT only).
 
         Returns:
             New condition list with one swap applied (or unchanged if no swap possible).
@@ -280,6 +291,7 @@ class BayesianOptimizer:
         elif old_direction == "SHORT":
             pool = self._available_short
         else:
+            # SHARED shouldn't be in core conditions, but fallback just in case
             pool = self._available_shared
 
         available = [c for c in pool if c not in conditions]
@@ -312,6 +324,26 @@ class BayesianOptimizer:
             conditions.append(extra)
             available_short.remove(extra)
             short_count += 1
+
+    def _trim_preserving_balance(self, conditions: list[str], max_count: int) -> None:
+        """Trim conditions to max_count while preserving at least 2 LONG and 2 SHORT (in-place)."""
+        if len(conditions) <= max_count:
+            return
+
+        to_remove = len(conditions) - max_count
+
+        shared = [c for c in conditions if get_direction_for_condition(c) == "SHARED"]
+        long_conds = [c for c in conditions if get_direction_for_condition(c) == "LONG"]
+        short_conds = [c for c in conditions if get_direction_for_condition(c) == "SHORT"]
+
+        removable = []
+        removable.extend(shared)
+        removable.extend(long_conds[2:])
+        removable.extend(short_conds[2:])
+
+        rng.shuffle(removable)
+        removed = set(removable[:to_remove])
+        conditions[:] = [c for c in conditions if c not in removed]
 
     def _generate_random_conditions(self) -> list[str]:
         """Generate random conditions as a fallback when no seeds are available.
@@ -357,4 +389,5 @@ class BayesianOptimizer:
             "threshold": strategy["threshold"],
             "sl_atr_mult": strategy.get("sl_atr_mult", strategy.get("sl", 1.5)),
             "rr": strategy["rr"],
+            "shared_bonus_weight": strategy.get("shared_bonus_weight", 0.0),
         }

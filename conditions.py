@@ -9,7 +9,7 @@ Conditions are organized into three pools:
 Total: 53 unique conditions.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # === LONG-Only Conditions (22) ===
 CONDITIONS_LONG: Dict[str, str] = {
@@ -78,8 +78,8 @@ CONDITIONS_SHARED: Dict[str, str] = {
     "adx_14_gt_25": "ADX(14) > 25 — trending",
     "adx_14_gt_30": "ADX(14) > 30 — strong trend",
     "adx_14_lt_20": "ADX(14) < 20 — ranging/no trend",
-    "price_gt_high_20_1_02": "Close > Highest(High, 20) × 1.02 — breakout",
-    "price_lt_low_20_0_98": "Close < Lowest(Low, 20) × 0.98 — breakdown",
+    "price_gt_high_20_1_02": "Close > Highest(High, 20) × 1.03 — breakout",
+    "price_lt_low_20_0_98": "Close < Lowest(Low, 20) × 0.97 — breakdown",
 }
 
 # === Combined Pools ===
@@ -149,6 +149,69 @@ def get_condition_description(condition_key: str) -> str:
 def get_all_condition_pools() -> list[str]:
     """Return a combined list of all condition names from LONG, SHORT, and SHARED pools."""
     return list(ALL_CONDITIONS.keys())
+
+
+# === Shared Bonus Configuration ===
+# Directional SHARED conditions: only apply bonus to one direction
+SHARED_DIRECTIONAL_MAP: Dict[str, str] = {
+    "price_gt_high_20_1_02": "LONG",   # bullish breakout → LONG bonus only
+    "price_lt_low_20_0_98": "SHORT",   # bearish breakdown → SHORT bonus only
+}
+
+# Hierarchical deduplication: if the stronger condition is true, ignore the weaker
+SHARED_DEDUPLICATION: Dict[str, str] = {
+    "volume_gt_sma_20_1_5": "volume_gt_sma_20_2_0",   # 1.5x is weaker than 2.0x
+    "adx_14_gt_25": "adx_14_gt_30",                    # >25 is weaker than >30
+}
+
+
+def compute_shared_bonus(
+    cond_row,                            # pandas Series or dict of condition values
+    shared_conditions: list[str],         # strategy's shared condition keys
+    shared_bonus_weight: float,           # GA-optimized weight per condition
+    direction: str = "LONG",             # which direction we're evaluating
+) -> float:
+    """Compute the SHARED bonus for a single candle.
+
+    Applies:
+    1. Directional filtering (price_gt_high → LONG only, price_lt_low → SHORT only)
+    2. Hierarchical deduplication (vol 2.0x > 1.5x, ADX 30 > 25)
+    3. Counts true conditions × shared_bonus_weight
+
+    Args:
+        cond_row: Row from conditions DataFrame (Series with bool values).
+        shared_conditions: List of SHARED condition keys in the strategy.
+        shared_bonus_weight: Bonus weight per true condition.
+        direction: "LONG" or "SHORT" — for directional filtering.
+
+    Returns:
+        Bonus value (0.0 to shared_bonus_weight × len(shared_conditions)).
+    """
+    if not shared_conditions or shared_bonus_weight <= 0:
+        return 0.0
+
+    # 1. Directional filtering: skip conditions that don't apply to this direction
+    eligible = []
+    for cond in shared_conditions:
+        dir_filter = SHARED_DIRECTIONAL_MAP.get(cond)
+        if dir_filter is not None and dir_filter != direction:
+            continue  # skip — this condition only applies to the other direction
+        eligible.append(cond)
+
+    # 2. Evaluate which eligible conditions are true
+    true_conds = set()
+    for cond in eligible:
+        val = cond_row[cond] if hasattr(cond_row, '__getitem__') else getattr(cond_row, cond, False)
+        if val:
+            true_conds.add(cond)
+
+    # 3. Hierarchical deduplication: remove weaker conditions if stronger is true
+    deduped = set(true_conds)
+    for weaker, stronger in SHARED_DEDUPLICATION.items():
+        if weaker in deduped and stronger in deduped:
+            deduped.discard(weaker)  # remove weaker, keep stronger
+
+    return len(deduped) * shared_bonus_weight
 
 
 def get_direction_for_condition(condition_key: str) -> str:

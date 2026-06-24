@@ -36,12 +36,12 @@ SYMBOL = "BTC/USDT"
 
 # === Training ===
 TRAINING_MINUTES = 30
-TRAINING_PERIOD_MONTHS = 12
+TRAINING_PERIOD_MONTHS = 6
 TRAINING_METHOD = "ga_bayesian"  # "random" or "ga_bayesian"
 
 # === Strategy Generation ===
 MIN_CONDITION_PERCENTAGE = 0.25  # INACTIVE (superseded by MIN_CONDITIONS_ABSOLUTE)
-MAX_CONDITION_PERCENTAGE = 0.65  # 65% of the pool — ACTIVE (hard cap at 35 conditions with 53 total)
+MAX_CONDITION_PERCENTAGE = 0.65  # Maximum conditions as fraction of pool (ACTIVE)
 MIN_CONDITIONS_ABSOLUTE = 4      # ACTIVE — Hard floor (never go below 4 conditions)
 MIN_THRESHOLD = 0.3
 MAX_THRESHOLD = 0.7
@@ -56,12 +56,12 @@ MAX_RR = 5.0
 # than the opposite direction. No overall "all conditions" satisfaction gate — this avoided
 # false negatives on clear one-sided signals (e.g., 4 LONG true / 0 SHORT would fail Gate 1
 # even though it's a strong LONG signal).
-DIRECTION_RATIO = 1.3           # Dominant must be >= 1.3× stronger than opposite
+DIRECTION_RATIO = 1.3           # Dominant direction must be this many times stronger than opposite
 
 # === GA Parameters ===
 GA_POPULATION_SIZE = 200
 GA_MAX_GENERATIONS = 200         # Safety cap for time-based GA (rarely hit)
-GA_TIME_BUDGET_PERCENT = 0.5     # Use 50% of training time for GA
+GA_TIME_BUDGET_PERCENT = 0.5     # Fraction of training time allocated to GA
 GA_ELITE_COUNT = 5
 GA_MUTATION_PROB = 0.2
 GA_CROSSOVER_PROB = 0.8
@@ -73,23 +73,23 @@ BAYESIAN_STARTUP_TRIALS = 20     # Random trials before TPE model kicks in (low 
 # === Qualification / Disqualification ===
 MIN_TRADES_PER_DAY = 1.2
 MAX_TRADES_PER_DAY = 10
-MIN_WIN_RATE = 0.35  # 35%
-MAX_DRAWDOWN = 0.50  # 50%
-DRAWDOWN_PENALTY_START = 0.15  # 15%
-DRAWDOWN_PENALTY_END = 0.50  # 50%
+MIN_WIN_RATE = 0.35
+MAX_DRAWDOWN = 0.50
+DRAWDOWN_PENALTY_START = 0.15
+DRAWDOWN_PENALTY_END = 0.50
 
 # === Timeout Penalty ===
-TIMEOUT_PENALTY_THRESHOLD = 0.25   # If >25% of exits are timeouts, apply penalty
-TIMEOUT_PENALTY = 0.15             # 15% score reduction for excessive timeouts
+TIMEOUT_PENALTY_THRESHOLD = 0.25   # Fraction of exits that are timeouts before penalty kicks in
+TIMEOUT_PENALTY = 0.15             # Score multiplier reduction when timeout threshold is exceeded
 
 # === Trade Parameters ===
 MIN_TRADE_DURATION_MINUTES = 45
 MAX_TRADE_DURATION_HOURS = 24
 COOLDOWN_CANDLES = 4
-TRADING_FEE_PCT = 0.2  # per side
+TRADING_FEE_PCT = 0.1  # per side
 
 # === Live Mode ===
-LIVE_CHECK_INTERVAL_SECONDS = 900  # 15 minutes
+LIVE_CHECK_INTERVAL_SECONDS = 900  # Seconds between live signal checks
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 
 # === Paths ===
@@ -113,12 +113,34 @@ LOG_DIR_LIVE.mkdir(parents=True, exist_ok=True)
 # Auto-detected: TA-Lib preferred, pandas_ta fallback
 # See indicators.py for detection logic
 
+# === Position Sizing ===
+RISK_PER_RR = 0.02  # Fraction of equity risked per unit of RR
+
+# === Validation Parameters ===
+VALIDATION_WINDOWS = 3          # Number of independent windows to test (1 = single, like before)
+VALIDATION_WINDOW_MONTHS = 6    # Months per window
+VALIDATION_WINDOW_OVERLAP = 0   # 0 = sequential non-overlapping (recommended), N = slide by N months
+
+# === Walk-Forward Validation (Training) ===
+# NOT YET IMPLEMENTED — config toggles only. Each fold backtests on a different slice.
+# Enabling this would make training ~3× slower (each strategy tested N times).
+USE_WALK_FORWARD = False        # Enable walk-forward fitness during training
+WF_WINDOW_MONTHS = 2            # Months per fold
+
 # === Top Strategies ===
 TOP_STRATEGIES_COUNT = 500
 
 # === Efficiency Thresholds ===
 EFFICIENCY_CRITICAL = 0.3
-MIN_POOL_SIZE = 20  # Minimum conditions per direction; refuse removals below this floor
+MIN_POOL_SIZE = 18  # Minimum conditions per direction; refuse removals below this floor
 EFFICIENCY_ALERT = 0.5
 EFFICIENCY_WARNING = 0.7
 EFFICIENCY_STRONG = 1.3
+MIN_EVALS_FOR_REMOVAL = 10  # Don't flag conditions for removal/low-eff unless tested >= N times
+COVERAGE_EVALS_PER_CONDITION = 5  # Guarantee each condition is tested at least this many times
+
+# === Shared Bonus Weight ===
+# SHARED conditions contribute a bonus to confidence (numerator only, not denominator).
+# The GA/Bayesian optimizer picks a weight per strategy within this range.
+MIN_SHARED_BONUS_WEIGHT = 0.0   # No bonus (SHARED conditions ignored)
+MAX_SHARED_BONUS_WEIGHT = 0.15  # Maximum bonus fraction per true SHARED condition

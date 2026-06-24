@@ -80,43 +80,77 @@ def fetch_ohlcv(
     if since is None:
         since = until - timedelta(days=config.TRAINING_PERIOD_MONTHS * 30)
 
+    # Save the original request bounds — since may be modified by cache logic below,
+    # but the caller expects data within [requested_since, requested_until].
+    requested_since = since
+    requested_until = until
+
     cache_path = _get_cache_path(symbol, timeframe)
     cached_df = None
 
-    # Load cached data if available
+    # Load cached data if available, and determine what gaps need fetching
     if use_cache and cache_path.exists():
         cached_df = _load_cache(cache_path)
         if cached_df is not None and not cached_df.empty:
+            first_cached = cached_df["timestamp"].min()
             last_cached = cached_df["timestamp"].max()
             # Convert to timezone-aware if needed
             if last_cached.tzinfo is None:
                 last_cached = last_cached.tz_localize("UTC")
-            # Only fetch from where cache ends
-            since_fetch = last_cached + TIMEFRAME_DELTA[timeframe]
+                first_cached = first_cached.tz_localize("UTC")
             logger.info(
-                f"Cache found: {len(cached_df)} candles up to {last_cached}. "
-                f"Fetching from {since_fetch}."
+                f"Cache found: {len(cached_df)} candles ({first_cached} to {last_cached})."
             )
-            since = max(since, since_fetch)
 
-    # Fetch new data
-    new_df = _fetch_paginated(symbol, timeframe, since, until)
+    # Fetch any data outside the cache: both newer and older gaps.
+    # This handles validation requesting an earlier period than what's cached.
+    new_df = None
+    old_df = None
 
-    # Merge with cache
-    if cached_df is not None and not cached_df.empty and not new_df.empty:
-        df = pd.concat([cached_df, new_df], ignore_index=True)
+    if use_cache and cached_df is not None and not cached_df.empty:
+        # Fetch NEWER data (after cache end)
+        newer_since = last_cached + TIMEFRAME_DELTA[timeframe]
+        if newer_since < until:
+            logger.info(f"Fetching newer data: {newer_since} to {until}")
+            new_df = _fetch_paginated(symbol, timeframe, newer_since, until)
+        else:
+            new_df = pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        # Fetch OLDER data (before cache start) if requested range extends earlier
+        if requested_since < first_cached:
+            older_until = first_cached - TIMEFRAME_DELTA[timeframe]
+            logger.info(f"Fetching older data: {requested_since} to {older_until}")
+            old_df = _fetch_paginated(symbol, timeframe, requested_since, older_until)
+    else:
+        # No cache — fetch the full requested range
+        new_df = _fetch_paginated(symbol, timeframe, requested_since, requested_until)
+
+    # Merge cache + new data + old data
+    parts = []
+    if old_df is not None and not old_df.empty:
+        parts.append(old_df)
+    if cached_df is not None and not cached_df.empty:
+        parts.append(cached_df)
+    if new_df is not None and not new_df.empty:
+        parts.append(new_df)
+
+    if parts:
+        df = pd.concat(parts, ignore_index=True)
         df = df.drop_duplicates(subset=["timestamp"], keep="last")
         df = df.sort_values("timestamp").reset_index(drop=True)
-    elif not new_df.empty:
-        df = new_df
-    elif cached_df is not None and not cached_df.empty:
-        df = cached_df
     else:
         df = pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     # Save to cache
     if use_cache and not df.empty:
         _save_cache(df, cache_path)
+
+    # Filter to the originally requested date range.
+    # The cache may contain data outside the requested window (e.g. training data
+    # when validation is requesting an earlier period). Without this filter,
+    # callers would silently receive data from the wrong time period.
+    df = df[(df["timestamp"] >= requested_since) & (df["timestamp"] <= requested_until)]
+    df = df.reset_index(drop=True)
 
     logger.info(f"Total candles available: {len(df)}")
     return df

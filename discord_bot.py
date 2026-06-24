@@ -69,6 +69,8 @@ def send_entry_signal(
     strategy_id: str,
     strategy_rr_day: float,
     strategy_win_rate: float,
+    base_confidence: Optional[float] = None,
+    bonus: Optional[float] = None,
 ) -> bool:
     """Send a new entry signal alert.
 
@@ -80,11 +82,13 @@ def send_entry_signal(
         tp_price: Take profit price.
         rr_ratio: Risk-reward ratio.
         confidence: Confidence percentage (0-100).
-        conditions_met: Number of conditions met.
-        conditions_total: Total number of conditions.
+        conditions_met: Number of core conditions met.
+        conditions_total: Total number of core conditions.
         strategy_id: Strategy identifier.
         strategy_rr_day: Strategy's historical RR/day.
         strategy_win_rate: Strategy's historical win rate.
+        base_confidence: Optional base confidence (core conditions only, 0-100).
+        bonus: Optional SHARED bonus (0-100).
 
     Returns:
         True if sent successfully.
@@ -102,7 +106,7 @@ def send_entry_signal(
             {"name": "Stop Loss", "value": f"${sl_price:,.2f} ({sl_pct:.1f}%)", "inline": True},
             {"name": "Take Profit", "value": f"${tp_price:,.2f} ({rr_ratio:.1f} RR)", "inline": True},
             {"name": "Risk-Reward", "value": str(rr_ratio), "inline": True},
-            {"name": "Confidence", "value": f"{confidence:.0f}% ({conditions_met}/{conditions_total} conditions)", "inline": True},
+            {"name": "Confidence", "value": f"{confidence:.0f}% ({conditions_met}/{conditions_total} conditions)" if base_confidence is None else f"{confidence:.0f}% ({base_confidence:.0f}% base + {bonus:.0f}% bonus)", "inline": True},
             {"name": "Strategy", "value": strategy_id, "inline": True},
             {"name": "\u200b", "value": "\u200b", "inline": True},
             {"name": "Historical RR/day", "value": f"{strategy_rr_day:.2f}", "inline": True},

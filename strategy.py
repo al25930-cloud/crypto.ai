@@ -22,6 +22,7 @@ from conditions import (
     get_direction_for_condition,
     get_all_condition_pools,
     ALL_CONDITIONS,
+    CONDITIONS_SHARED,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,9 @@ def generate_random_strategy(direction: Optional[str] = None) -> dict:
         pool = get_condition_pool(direction)
         pool = [c for c in pool if c not in removed]
         num_conditions = random.randint(min_count, max_count)
-        conditions = random.sample(pool, min(num_conditions, len(pool)))
+        picked = random.sample(pool, min(num_conditions, len(pool)))
+        conditions = [c for c in picked if c not in CONDITIONS_SHARED]
+        shared_conditions = [c for c in picked if c in CONDITIONS_SHARED]
     else:
         long_conditions = random.sample(long_pool, 2)
         short_conditions = random.sample(short_pool, 2)
@@ -87,15 +90,33 @@ def generate_random_strategy(direction: Optional[str] = None) -> dict:
         else:
             extra_conditions = []
 
-        conditions = long_conditions + short_conditions + extra_conditions
+        # Separate extra conditions into LONG/SHORT (core) and SHARED (bonus)
+        extra_core = []
+        extra_shared = []
+        for c in extra_conditions:
+            if c in CONDITIONS_SHARED:
+                extra_shared.append(c)
+            else:
+                extra_core.append(c)
+
+        # Also check if any of the initial long/short picks were SHARED
+        core_long = [c for c in long_conditions if c not in CONDITIONS_SHARED]
+        core_short = [c for c in short_conditions if c not in CONDITIONS_SHARED]
+        moved_to_shared = [c for c in long_conditions + short_conditions if c in CONDITIONS_SHARED]
+
+        conditions = core_long + core_short + extra_core
+        shared_conditions = extra_shared + moved_to_shared
 
     threshold = round(random.uniform(config.MIN_THRESHOLD, config.MAX_THRESHOLD), 4)
     sl_atr_mult = round(random.uniform(config.MIN_SL_ATR_MULT, config.MAX_SL_ATR_MULT), 2)
     rr = round(random.uniform(config.MIN_RR, config.MAX_RR), 2)
+    shared_bonus_weight = round(random.uniform(config.MIN_SHARED_BONUS_WEIGHT, config.MAX_SHARED_BONUS_WEIGHT), 4)
 
     return {
         "id": f"strat_{uuid.uuid4().hex[:8]}",
         "conditions": conditions,
+        "shared_conditions": shared_conditions,
+        "shared_bonus_weight": shared_bonus_weight,
         "threshold": threshold,
         "sl_atr_mult": sl_atr_mult,
         "rr": rr,
@@ -128,6 +149,12 @@ def score_strategy(results: dict) -> float:
 
     rr_per_day = results["rr_per_day"]
     max_drawdown = results["max_drawdown"]
+
+    # Negative RR: return raw score without applying drawdown/timeout penalties.
+    # Penalties (0.0-1.0) would make negative scores less negative (closer to zero = "better"),
+    # which would incorrectly reward losing strategies for having worse drawdowns.
+    if rr_per_day < 0:
+        return rr_per_day
 
     # Drawdown penalty
     if max_drawdown < config.DRAWDOWN_PENALTY_START:

@@ -440,7 +440,7 @@ python live_signal.py --symbol BTC/USDT
 4. **Direction decision** (single gate): The dominant direction's strength (`true / total conditions in that direction`) must clear the strategy's threshold (per-strategy, evolved by GA) AND be at least `DIRECTION_RATIO` (1.3×) stronger than the opposite direction. There is no overall satisfaction gate — a candle with 4/5 LONG true and 0/5 SHORT true qualifies as a LONG signal even if the overall ratio is 40%.
 5. **Signal detection**: If conditions are met and direction is clear, sends a Discord alert with entry price, SL, TP
 6. **Exit tracking**: Monitors the open position for SL/TP hits or 24-hour timeout
-7. **Cooldown**: After any exit, waits 4 candles (1 hour) before looking for new signals
+7. **Cooldown**: After any exit, waits `COOLDOWN_CANDLES` candles before looking for new signals. On startup, the cooldown is recalculated based on how many candles have actually elapsed since the exit (using the stored exit timestamp), so restating the bot mid-cooldown doesn't restart the timer from scratch
 
 ### Discord alerts you'll receive
 
@@ -543,11 +543,13 @@ score = rr_per_day × drawdown_penalty
 
 Strategies no longer have a fixed direction (LONG or SHORT). Instead, each strategy contains conditions from **both** direction pools. At each entry check (backtest and live):
 
-1. Count how many LONG conditions are true → compute `long_strength` (true / total LONG)
-2. Count how many SHORT conditions are true → compute `short_strength` (true / total SHORT)
-3. If `long_strength >= 0.60` AND `long_strength > short_strength × 1.3` → enter **LONG**
-4. If `short_strength >= 0.60` AND `short_strength > long_strength × 1.3` → enter **SHORT**
+1. Count how many LONG + SHARED conditions are true → compute `long_strength` (true / total LONG+SHARED)
+2. Count how many SHORT + SHARED conditions are true → compute `short_strength` (true / total SHORT+SHARED)
+3. If `long_strength >= threshold` AND `long_strength > short_strength × 1.3` → enter **LONG**
+4. If `short_strength >= threshold` AND `short_strength > long_strength × 1.3` → enter **SHORT**
 5. Otherwise → **HOLD** (no clear consensus, wait for next candle)
+
+SHARED conditions count toward both directions equally, confirming the trade context without biasing toward LONG or SHORT. They only help pass the threshold — the DIRECTION_RATIO check still requires pure LONG or SHORT conditions to dominate.
 
 Once in a position, all signals are ignored until the trade exits via SL, TP, or timeout. No mid-trade flipping.
 
@@ -617,7 +619,7 @@ All parameters are in `config.py`. Here's the complete list:
 | Parameter | Default | Description |
 |---|---|---|
 | `TRAINING_MINUTES` | `30` | Training duration in minutes |
-| `TRAINING_PERIOD_MONTHS` | `12` | Months of historical data for training |
+| `TRAINING_PERIOD_MONTHS` | `6` | Months of historical data for training |
 | `TRAINING_METHOD` | `"ga_bayesian"` | `"ga_bayesian"` or `"random"` |
 
 ### Strategy Generation
@@ -639,6 +641,15 @@ All parameters are in `config.py`. Here's the complete list:
 
 These are **fixed system-wide thresholds** — not evolved per strategy. They ensure entries only happen when there's a clear directional consensus. Users can adjust them globally in `config.py`.
 
+### Validation Parameters
+| Parameter | Default | Description |
+|---|---|---|
+| `VALIDATION_WINDOWS` | `3` | Number of independent windows to test (1 = single) |
+| `VALIDATION_WINDOW_MONTHS` | `6` | Months per validation window |
+| `VALIDATION_WINDOW_OVERLAP` | `0` | Months overlap (0 = sequential, non-overlapping) |
+| `USE_WALK_FORWARD` | `False` | Enable walk-forward fitness during training (off by default, 3× speed cost) |
+| `WF_WINDOW_MONTHS` | `2` | Months per walk-forward fold |
+
 ### Disqualification
 | Parameter | Default | Description |
 |---|---|---|
@@ -658,6 +669,7 @@ These are **fixed system-wide thresholds** — not evolved per strategy. They en
 | `MAX_TRADE_DURATION_HOURS` | `24` | Trades open longer than this are force-closed |
 | `COOLDOWN_CANDLES` | `4` | Candles to wait after an exit (1 hour on 15m) |
 | `TRADING_FEE_PCT` | `0.1` | Trading fee per side (0.1% = Binance standard) |
+| `RISK_PER_RR` | `0.02` | Fraction of equity risked per trade (2% = each trade risks 2% of account) |
 
 ### GA Parameters
 | Parameter | Default | Description |
@@ -699,7 +711,9 @@ These are **fixed system-wide thresholds** — not evolved per strategy. They en
 | `models/validation_report.json` | Validation backtest results |
 | `state.json` | Live bot state (position, cooldown, last check) |
 | `data/*.csv` | Cached OHLCV candle data |
-| `logs/*.log` | Training, validation, and live signal logs |
+| `logs/training/*.log` | Training session logs |
+| `logs/validation/*.log` | Validation backtest logs |
+| `logs/live/*.log` | Live signal generator logs (one per day) |
 
 ### Source Files
 
@@ -716,7 +730,7 @@ These are **fixed system-wide thresholds** — not evolved per strategy. They en
 | `bayesian_optimizer.py` | Bayesian Optimization via Optuna with balance enforcement |
 | `efficiency.py` | Condition efficiency analysis |
 | `validation.py` | Full backtest validation with acceptance criteria |
-| `live_signal.py` | Live signal generator with dynamic direction and state management |
+| `live_signal.py` | Live signal generator with dynamic direction, state management, and cooldown recalculation on startup |
 | `discord_bot.py` | Discord webhook sender |
 
 ---
@@ -790,5 +804,6 @@ The following features are planned but not yet implemented:
 - **Sensitivity analysis**: Test how strategy performance changes when parameters are slightly modified
 - **Walk-forward validation**: Rolling window validation to check strategy stability over time
 - **Out-of-sample testing**: Test on data from different market regimes (bull, bear, sideways)
+- **Better Gen 0 seeding**: Replace pure random initial population with coverage seeds and hand-picked skeleton strategies to prevent GA from starting with zero viable individuals
 
 To contribute or request these features, open an issue on the repository.

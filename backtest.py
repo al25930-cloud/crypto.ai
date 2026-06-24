@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 import config
-from conditions import get_direction_for_condition
+from conditions import get_direction_for_condition, compute_shared_bonus
 from indicators import compute_all_conditions
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,8 @@ def backtest_strategy(
             exit_timeout_count, total_fees
     """
     conditions = strategy["conditions"]
+    shared_conditions = strategy.get("shared_conditions", [])
+    shared_bonus_weight = strategy.get("shared_bonus_weight", 0.0)
     threshold = strategy["threshold"]
     sl_atr_mult = strategy.get("sl_atr_mult", strategy.get("sl", 1.5))  # Fallback for backward compat
     rr_ratio = strategy["rr"]
@@ -91,15 +93,18 @@ def backtest_strategy(
         logger.warning("Strategy has deprecated 'direction' field. Bi-directional backtest requires mixed conditions. Skipping.")
         return _empty_results()
 
+    # Combine core + shared conditions for pre-computation
+    all_condition_keys = list(set(conditions + shared_conditions))
+
     # Compute conditions if not pre-computed
     if conditions_df is None:
-        conditions_df = compute_all_conditions(df, conditions)
+        conditions_df = compute_all_conditions(df, all_condition_keys)
 
     # Pre-compute category masks for dynamic direction
-    # Use actual conditions_df columns for index mapping (robust against filtered conditions)
+    # Core conditions (LONG/SHORT only) — used for strength threshold
     col_list = list(conditions_df.columns) if conditions_df is not None else conditions
-    long_indices = [i for i, c in enumerate(col_list) if get_direction_for_condition(c) == "LONG"]
-    short_indices = [i for i, c in enumerate(col_list) if get_direction_for_condition(c) == "SHORT"]
+    long_indices = [i for i, c in enumerate(col_list) if get_direction_for_condition(c) == "LONG" and c in conditions]
+    short_indices = [i for i, c in enumerate(col_list) if get_direction_for_condition(c) == "SHORT" and c in conditions]
     total_long = len(long_indices)
     total_short = len(short_indices)
 
@@ -111,6 +116,8 @@ def backtest_strategy(
     atr_values = df["atr_14"].values
     # Pre-convert conditions DataFrame to numpy for fast per-candle category lookups
     cond_values = conditions_df.values if conditions_df is not None and len(conditions_df) > 0 else None
+    # Pre-build column name-to-index map for compute_shared_bonus
+    col_name_to_idx = {c: i for i, c in enumerate(col_list)}
 
     min_duration = timedelta(minutes=config.MIN_TRADE_DURATION_MINUTES)
     max_duration = timedelta(hours=config.MAX_TRADE_DURATION_HOURS)
@@ -146,7 +153,7 @@ def backtest_strategy(
                 unrealized_pnl = (current_price - entry_price) / entry_price
             else:
                 unrealized_pnl = (entry_price - current_price) / entry_price
-            mtm_equity = equity * (1.0 + unrealized_pnl - (2 * fee_pct))
+            mtm_equity = equity * (1.0 + (unrealized_pnl - (2 * fee_pct)) * config.RISK_PER_RR)
             peak_equity = max(peak_equity, mtm_equity)
             drawdown = (peak_equity - mtm_equity) / peak_equity if peak_equity > 0 else 0.0
             max_drawdown = max(max_drawdown, drawdown)
@@ -203,8 +210,8 @@ def backtest_strategy(
                 else:
                     trade_rr = 0.0
 
-                # Apply realized P&L to equity
-                equity *= (1.0 + net_pnl_pct)
+                # Apply realized P&L to equity (scaled by position size)
+                equity *= (1.0 + net_pnl_pct * config.RISK_PER_RR)
 
                 # Check validity (minimum duration)
                 is_valid = duration >= min_duration
@@ -240,16 +247,30 @@ def backtest_strategy(
                 cooldown_remaining -= 1
             else:
                 # Single-gate entry: dominant direction strength must clear the strategy's threshold
-                # AND be at least DIRECTION_RATIO× stronger than the opposite. No overall satisfaction gate.
+                # AND be at least DIRECTION_RATIO× stronger than the opposite.
+                # SHARED conditions contribute as bonus only (not in denominator).
                 long_true = int(cond_values[i, long_indices].sum()) if cond_values is not None and total_long > 0 else 0
                 short_true = int(cond_values[i, short_indices].sum()) if cond_values is not None and total_short > 0 else 0
 
                 long_strength = long_true / total_long if total_long > 0 else 0
                 short_strength = short_true / total_short if total_short > 0 else 0
 
-                if long_strength >= threshold and long_strength > short_strength * config.DIRECTION_RATIO:
+                # Compute shared bonus (directional filtering + dedup applied)
+                # Build a row-like mapping for compute_shared_bonus
+                if shared_conditions and shared_bonus_weight > 0 and cond_values is not None:
+                    row = {c: bool(cond_values[i, col_name_to_idx[c]]) for c in shared_conditions if c in col_name_to_idx}
+                    long_bonus = compute_shared_bonus(row, shared_conditions, shared_bonus_weight, "LONG")
+                    short_bonus = compute_shared_bonus(row, shared_conditions, shared_bonus_weight, "SHORT")
+                else:
+                    long_bonus = 0.0
+                    short_bonus = 0.0
+
+                long_total = min(long_strength + long_bonus, 0.95)  # Clamp to 95%
+                short_total = min(short_strength + short_bonus, 0.95)
+
+                if long_total >= threshold and long_strength > short_strength * config.DIRECTION_RATIO:
                     direction = "LONG"
-                elif short_strength >= threshold and short_strength > long_strength * config.DIRECTION_RATIO:
+                elif short_total >= threshold and short_strength > long_strength * config.DIRECTION_RATIO:
                     direction = "SHORT"
                 else:
                     direction = None  # HOLD — ambiguous or insufficient strength
@@ -294,7 +315,7 @@ def backtest_strategy(
         else:
             trade_rr = 0.0
 
-        equity *= (1.0 + net_pnl_pct)
+        equity *= (1.0 + net_pnl_pct * config.RISK_PER_RR)
         peak_equity = max(peak_equity, equity)
         drawdown = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0.0
         max_drawdown = max(max_drawdown, drawdown)

@@ -93,9 +93,11 @@ def analyze_conditions(all_results: list[dict], remove: bool = True) -> dict:
         strategy = result["strategy"]
         results = result["results"]
         conds = strategy.get("conditions", [])
+        shared_conds = strategy.get("shared_conditions", [])
+        all_conds = conds + shared_conds
         is_top_10 = (i < top_10_cutoff)
 
-        for cond in conds:
+        for cond in all_conds:
             if cond in condition_stats:
                 condition_stats[cond]["used_count"] += 1
                 condition_stats[cond]["rr_per_day_sum"] += results["rr_per_day"]
@@ -127,9 +129,15 @@ def analyze_conditions(all_results: list[dict], remove: bool = True) -> dict:
             stats["efficiency_score"] = 0.0
 
         # Determine alert level
+        # Don't flag conditions for removal/low-eff unless they have enough data.
+        # Conditions with too few evaluations get flagged as NO_DATA to protect
+        # them from premature removal before they've had a fair test.
         eff = stats["efficiency_score"]
+        min_evals = config.MIN_EVALS_FOR_REMOVAL
         if used == 0:
             stats["alert_level"] = "NO_DATA"
+        elif used < min_evals:
+            stats["alert_level"] = "NO_DATA"  # Not enough data to judge
         elif eff < config.EFFICIENCY_CRITICAL:
             stats["alert_level"] = "CRITICAL"
             removed_conditions.append(cond_key)

@@ -22,7 +22,7 @@ import pandas as pd
 
 import config
 from backtest import backtest_strategy, prepare_data
-from conditions import ALL_CONDITIONS
+from conditions import ALL_CONDITIONS, CONDITIONS_SHARED, get_direction_for_condition
 from data_fetcher import fetch_ohlcv, get_training_data
 from efficiency import analyze_conditions
 from indicators import compute_all_conditions
@@ -164,9 +164,12 @@ class TrainingSession:
             Float score (or -inf if disqualified).
         """
         # Select the relevant condition columns from pre-computed DataFrame
+        # Include both core conditions and shared conditions
         cond_keys = strategy["conditions"]
+        shared_keys = strategy.get("shared_conditions", [])
+        all_keys = list(set(cond_keys + shared_keys))
         # Only use conditions that exist in the pre-computed DataFrame
-        valid_keys = [k for k in cond_keys if k in self.all_conditions_df.columns]
+        valid_keys = [k for k in all_keys if k in self.all_conditions_df.columns]
         if not valid_keys:
             return float("-inf")
 
@@ -202,6 +205,116 @@ class TrainingSession:
 
         return score
 
+    def _build_coverage_seeds(self) -> list:
+        """Generate seed strategies guaranteeing every condition gets tested enough.
+
+        Without coverage injection, the GA converges on a narrow set of conditions,
+        leaving many conditions with zero evaluations. This makes the efficiency
+        analysis unreliable and can permanently eliminate useful conditions.
+
+        Returns:
+            List of Individual objects to inject into the GA's initial population.
+        """
+        from genetic_optimizer import Individual
+
+        min_evals = config.COVERAGE_EVALS_PER_CONDITION
+
+        # Count how many times each condition appeared in already-evaluated strategies
+        # Count both core and shared conditions separately
+        counts = {c: 0 for c in ALL_CONDITIONS}
+        for r in self.all_results:
+            for c in r["strategy"].get("conditions", []):
+                if c in counts:
+                    counts[c] += 1
+            for c in r["strategy"].get("shared_conditions", []):
+                if c in counts:
+                    counts[c] += 1
+
+        # Deficit: how many more evaluations each condition still needs
+        deficit = {c: max(0, min_evals - n) for c, n in counts.items()}
+        deficit = {c: n for c, n in deficit.items() if n > 0}
+
+        if not deficit:
+            return []
+
+        logger.info(
+            f"[COVERAGE] {len(deficit)} conditions need more evaluations "
+            f"(target: {min_evals} each). Generating seed strategies."
+        )
+
+        seeds = []
+        max_seeds = min(config.GA_POPULATION_SIZE, sum(deficit.values()))
+        remaining = dict(deficit)
+        max_iterations = max_seeds * 2  # Safety guard against theoretical infinite loop
+        iteration = 0
+
+        while remaining and len(seeds) < max_seeds and iteration < max_iterations:
+            iteration += 1
+            # Generate a random strategy as the base
+            strat = generate_random_strategy()
+            conds = list(strat["conditions"])
+            shared_conds = list(strat.get("shared_conditions", []))
+
+            # Try to inject underrepresented conditions
+            for cond_key in list(remaining.keys()):
+                if remaining[cond_key] <= 0:
+                    remaining.pop(cond_key, None)
+                    continue
+
+                # Check if it's already in core or shared
+                if cond_key in conds or cond_key in shared_conds:
+                    remaining[cond_key] -= 1
+                    if remaining[cond_key] <= 0:
+                        remaining.pop(cond_key, None)
+                    continue
+
+                direction = get_direction_for_condition(cond_key)
+
+                if direction == "SHARED":
+                    # SHARED conditions go into shared_conditions list
+                    shared_conds.append(cond_key)
+                    remaining[cond_key] -= 1
+                    if remaining[cond_key] <= 0:
+                        remaining.pop(cond_key, None)
+                else:
+                    # LONG/SHORT conditions go into core conditions
+                    # Find a slot to replace: same direction
+                    swappable = [
+                        i for i, c in enumerate(conds)
+                        if get_direction_for_condition(c) == direction
+                        and c != cond_key
+                    ]
+
+                    if swappable:
+                        conds[swappable[0]] = cond_key
+                        remaining[cond_key] -= 1
+                        if remaining[cond_key] <= 0:
+                            remaining.pop(cond_key, None)
+                    elif len(conds) < int(len(ALL_CONDITIONS) * config.MAX_CONDITION_PERCENTAGE):
+                        # Room to append
+                        conds.append(cond_key)
+                        remaining[cond_key] -= 1
+                        if remaining[cond_key] <= 0:
+                            remaining.pop(cond_key, None)
+
+            # Deduplicate both lists
+            seen = set()
+            conds = [c for c in conds if not (c in seen or seen.add(c))]
+            seen2 = set()
+            shared_conds = [c for c in shared_conds if not (c in seen2 or seen2.add(c))]
+
+            seeds.append(Individual(
+                conditions=conds,
+                threshold=strat["threshold"],
+                sl_atr_mult=strat["sl_atr_mult"],
+                rr=strat["rr"],
+                shared_conditions=shared_conds,
+                shared_bonus_weight=strat.get("shared_bonus_weight", 0.0),
+            ))
+
+        logger.info(f"[COVERAGE] Generated {len(seeds)} seed strategies for condition coverage.")
+        return seeds
+
     # =========================================================================
     # GA + Bayesian Pipeline (Default Method)
     # =========================================================================
@@ -230,6 +343,9 @@ class TrainingSession:
         ga_start = time.time()
         ga_time_budget = self.training_minutes * 60 * config.GA_TIME_BUDGET_PERCENT
 
+        # Build coverage seeds: guarantee every condition gets tested
+        coverage_seeds = self._build_coverage_seeds()
+
         ga = GeneticOptimizer(
             eval_func=self._eval_strategy,
             population_size=config.GA_POPULATION_SIZE,
@@ -241,6 +357,7 @@ class TrainingSession:
         ga_best, ga_top_10 = ga.run(
             time_limit_seconds=ga_time_budget,
             max_generations=config.GA_MAX_GENERATIONS,
+            seed_individuals=coverage_seeds,
         )
         ga_elapsed = time.time() - ga_start
 
@@ -413,12 +530,13 @@ class TrainingSession:
             logger.info(f"  Best score:          {score:.4f}")
             # Show direction mix instead of fixed direction
             conds = best.get('conditions', [])
+            shared_conds_list = best.get('shared_conditions', [])
+            shared_bonus_weight = best.get('shared_bonus_weight', 0.0)
             if conds:
                 from conditions import get_direction_for_condition
                 long_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'LONG')
                 short_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'SHORT')
-                shared_conds = sum(1 for c in conds if get_direction_for_condition(c) == 'SHARED')
-                logger.info(f"  Best strategy:       {best.get('id', 'N/A')} (LONG:{long_conds} SHORT:{short_conds} SHARED:{shared_conds})")
+                logger.info(f"  Best strategy:       {best.get('id', 'N/A')} (LONG:{long_conds} SHORT:{short_conds} SHARED(bonus):{len(shared_conds_list)} weight:{shared_bonus_weight:.4f})")
             else:
                 logger.info(f"  Best strategy:       {best.get('id', 'N/A')}")
             if 'results' in best:

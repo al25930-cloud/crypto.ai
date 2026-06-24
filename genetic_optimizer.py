@@ -14,6 +14,7 @@ from conditions import (
     get_condition_count_range,
     get_direction_for_condition,
     ALL_CONDITIONS,
+    CONDITIONS_SHARED,
 )
 from strategy import generate_random_strategy
 
@@ -31,10 +32,13 @@ class Individual:
     evaluated-but-disqualified).
     """
 
-    __slots__ = ("conditions", "threshold", "sl_atr_mult", "rr", "fitness")
+    __slots__ = ("conditions", "shared_conditions", "shared_bonus_weight", "threshold", "sl_atr_mult", "rr", "fitness")
 
-    def __init__(self, conditions: list, threshold: float, sl_atr_mult: float, rr: float):
+    def __init__(self, conditions: list, threshold: float, sl_atr_mult: float, rr: float,
+                 shared_conditions: Optional[list] = None, shared_bonus_weight: float = 0.0):
         self.conditions = list(conditions)  # always a fresh copy
+        self.shared_conditions = list(shared_conditions) if shared_conditions else []
+        self.shared_bonus_weight = shared_bonus_weight
         self.threshold = threshold
         self.sl_atr_mult = sl_atr_mult
         self.rr = rr
@@ -45,6 +49,8 @@ class Individual:
         return {
             "id": "",
             "conditions": list(self.conditions),
+            "shared_conditions": list(self.shared_conditions),
+            "shared_bonus_weight": self.shared_bonus_weight,
             "threshold": self.threshold,
             "sl_atr_mult": self.sl_atr_mult,
             "rr": self.rr,
@@ -55,6 +61,8 @@ class Individual:
         ind = Individual(
             list(self.conditions),
             self.threshold, self.sl_atr_mult, self.rr,
+            shared_conditions=list(self.shared_conditions),
+            shared_bonus_weight=self.shared_bonus_weight,
         )
         ind.fitness = self.fitness
         return ind
@@ -63,6 +71,8 @@ class Individual:
         """Create a deep copy with fitness reset to None (needs re-evaluation)."""
         return Individual(
             list(self.conditions), self.threshold, self.sl_atr_mult, self.rr,
+            shared_conditions=list(self.shared_conditions),
+            shared_bonus_weight=self.shared_bonus_weight,
         )
 
 
@@ -74,6 +84,8 @@ def _create_random_individual() -> Individual:
         threshold=strat["threshold"],
         sl_atr_mult=strat["sl_atr_mult"],
         rr=strat["rr"],
+        shared_conditions=strat.get("shared_conditions", []),
+        shared_bonus_weight=strat.get("shared_bonus_weight", 0.0),
     )
 
 
@@ -104,12 +116,40 @@ def _ensure_balance(conditions: list) -> None:
         short_count += 1
 
 
+def _trim_preserving_balance(conditions: list, max_count: int) -> None:
+    """Trim conditions to max_count while preserving at least 2 LONG and 2 SHORT (in-place).
+
+    Removes non-essential conditions first (SHARED, then excess LONG/SHORT beyond 2 each).
+    """
+    if len(conditions) <= max_count:
+        return
+
+    to_remove = len(conditions) - max_count
+
+    # Categorize conditions by direction
+    shared = [c for c in conditions if get_direction_for_condition(c) == "SHARED"]
+    long_conds = [c for c in conditions if get_direction_for_condition(c) == "LONG"]
+    short_conds = [c for c in conditions if get_direction_for_condition(c) == "SHORT"]
+
+    # Build removal candidates: SHARED first, then excess LONG (beyond 2), then excess SHORT (beyond 2)
+    removable = []
+    removable.extend(shared)  # SHARED conditions are least essential for balance
+    removable.extend(long_conds[2:])  # Keep at least 2 LONG
+    removable.extend(short_conds[2:])  # Keep at least 2 SHORT
+
+    # Remove up to `to_remove` candidates (randomly selected)
+    rng.shuffle(removable)
+    removed = set(removable[:to_remove])
+    conditions[:] = [c for c in conditions if c not in removed]
+
+
 def _mate(ind1: Individual, ind2: Individual) -> tuple[Individual, Individual]:
     """Crossover two individuals to produce two distinct offspring.
 
     Crossover logic:
     - Conditions: first half from parent 1, second half from parent 2 (and vice versa)
-    - Threshold, SL, RR: average of parents
+    - Shared conditions: union of both parents, deduplicated
+    - Threshold, SL, RR, shared_bonus_weight: average of parents
     - No direction inheritance — direction emerges from condition mix at entry time
     """
     conds1 = list(ind1.conditions)
@@ -125,32 +165,30 @@ def _mate(ind1: Individual, ind2: Individual) -> tuple[Individual, Individual]:
         seen = set()
         child_conds[:] = [c for c in child_conds if not (c in seen or seen.add(c))]
 
-    # Ensure balance (at least 2 LONG + 2 SHORT)
-    _ensure_balance(child1_conds)
-    _ensure_balance(child2_conds)
-
-    # Enforce max conditions cap BEFORE balance (balance may add conditions)
+    # Enforce max conditions cap, preserving balance if possible
     pool_size = len(ALL_CONDITIONS)
     _, max_count = get_condition_count_range(pool_size)
-    child1_conds[:] = child1_conds[:max_count]
-    child2_conds[:] = child2_conds[:max_count]
+    for child_conds in [child1_conds, child2_conds]:
+        _ensure_balance(child_conds)
+        if len(child_conds) > max_count:
+            # Remove excess conditions while preserving at least 2 LONG + 2 SHORT
+            _trim_preserving_balance(child_conds, max_count)
 
-    # Ensure balance (at least 2 LONG + 2 SHORT) AFTER capping
-    _ensure_balance(child1_conds)
-    _ensure_balance(child2_conds)
-
-    # Re-cap only if balance enforcement pushed over max (rare, acceptable)
-    child1_conds[:] = child1_conds[:max_count]
-    child2_conds[:] = child2_conds[:max_count]
+    # Shared conditions: union of both parents (deduplicated)
+    child1_shared = list(set(ind1.shared_conditions) | set(ind2.shared_conditions))
+    child2_shared = list(set(ind2.shared_conditions) | set(ind1.shared_conditions))
 
     # Numeric parameters: average
     child_threshold = round((ind1.threshold + ind2.threshold) / 2, 4)
     child_sl_atr_mult = round((ind1.sl_atr_mult + ind2.sl_atr_mult) / 2, 2)
     child_rr = round((ind1.rr + ind2.rr) / 2, 2)
+    child_shared_bonus = round((ind1.shared_bonus_weight + ind2.shared_bonus_weight) / 2, 4)
 
     # New individuals have fitness=None (need evaluation)
-    new_ind1 = Individual(child1_conds, child_threshold, child_sl_atr_mult, child_rr)
-    new_ind2 = Individual(child2_conds, child_threshold, child_sl_atr_mult, child_rr)
+    new_ind1 = Individual(child1_conds, child_threshold, child_sl_atr_mult, child_rr,
+                          shared_conditions=child1_shared, shared_bonus_weight=child_shared_bonus)
+    new_ind2 = Individual(child2_conds, child_threshold, child_sl_atr_mult, child_rr,
+                          shared_conditions=child2_shared, shared_bonus_weight=child_shared_bonus)
     return new_ind1, new_ind2
 
 
@@ -167,18 +205,43 @@ def _mutate(ind: Individual, mutation_prob: float = config.GA_MUTATION_PROB) -> 
     # Apply mutation — create a copy WITHOUT fitness (must re-evaluate)
     new_ind = ind.copy_without_fitness()
 
-    mutation_type = rng.choice(["condition", "threshold", "sl_atr_mult", "rr"])
+    mutation_type = rng.choice(["condition", "shared_condition", "shared_bonus_weight", "threshold", "sl_atr_mult", "rr"])
 
     if mutation_type == "condition":
         if len(new_ind.conditions) > 0:
-            all_pool = list(ALL_CONDITIONS.keys())
+            # Only swap with non-SHARED conditions (SHARED are in shared_conditions)
+            all_pool = [c for c in ALL_CONDITIONS.keys() if c not in CONDITIONS_SHARED]
             removed = _load_removed()
             available = [c for c in all_pool if c not in new_ind.conditions and c not in removed]
             if available:
                 idx = rng.randint(0, len(new_ind.conditions) - 1)
                 new_ind.conditions[idx] = rng.choice(available)
-            # Ensure balance after mutation
+            # Ensure balance after mutation, then trim preserving balance
             _ensure_balance(new_ind.conditions)
+            _, max_count = get_condition_count_range(len(ALL_CONDITIONS))
+            if len(new_ind.conditions) > max_count:
+                _trim_preserving_balance(new_ind.conditions, max_count)
+    elif mutation_type == "shared_condition":
+        # Mutate a shared condition: swap one out, or add/remove
+        shared_pool = list(CONDITIONS_SHARED.keys())
+        removed = _load_removed()
+        available = [c for c in shared_pool if c not in new_ind.shared_conditions and c not in removed]
+        if not new_ind.shared_conditions and available:
+            # Add a shared condition
+            new_ind.shared_conditions.append(rng.choice(available))
+        elif new_ind.shared_conditions:
+            action = rng.choice(["swap", "remove"])
+            if action == "swap" and available:
+                idx = rng.randint(0, len(new_ind.shared_conditions) - 1)
+                new_ind.shared_conditions[idx] = rng.choice(available)
+            elif action == "remove":
+                idx = rng.randint(0, len(new_ind.shared_conditions) - 1)
+                new_ind.shared_conditions.pop(idx)
+    elif mutation_type == "shared_bonus_weight":
+        delta = rng.choice([-0.02, 0.02])
+        new_ind.shared_bonus_weight = round(
+            max(config.MIN_SHARED_BONUS_WEIGHT, min(config.MAX_SHARED_BONUS_WEIGHT, new_ind.shared_bonus_weight + delta)), 4
+        )
     elif mutation_type == "threshold":
         delta = rng.choice([-0.05, 0.05])
         new_ind.threshold = round(
@@ -249,13 +312,16 @@ class GeneticOptimizer:
         self.best_individual: Optional[Individual] = None
         self.best_score: float = float("-inf")
 
-    def run(self, time_limit_seconds: Optional[float] = None, max_generations: int = config.GA_MAX_GENERATIONS) -> tuple[dict, list[dict]]:
+    def run(self, time_limit_seconds: Optional[float] = None, max_generations: int = config.GA_MAX_GENERATIONS, seed_individuals: Optional[list] = None) -> tuple[dict, list[dict]]:
         """Run the genetic algorithm.
 
         Args:
             time_limit_seconds: Optional time budget in seconds. GA stops when exceeded.
             max_generations: Safety cap on generations (default: config.GA_MAX_GENERATIONS).
                 Whichever limit (time or generations) is hit first stops the GA.
+            seed_individuals: Optional list of Individual objects to inject into the
+                initial population (e.g., coverage strategies). These replace the
+                first N random individuals.
 
         Returns:
             Tuple of (best_strategy_dict, top_10_strategies_list).
@@ -275,8 +341,13 @@ class GeneticOptimizer:
             "Higher = better. Negative or -inf means disqualified."
         )
 
-        # Create initial population
-        population = [_create_random_individual() for _ in range(self.population_size)]
+        # Create initial population, seeding with provided individuals first
+        population: list[Individual] = []
+        if seed_individuals:
+            population.extend(seed_individuals[:self.population_size])
+            logger.info(f"GA: Seeded {len(population)} individuals into initial population.")
+        remaining = self.population_size - len(population)
+        population.extend(_create_random_individual() for _ in range(remaining))
 
         # Evaluate initial population
         self._evaluate_population(population)
@@ -350,8 +421,8 @@ class GeneticOptimizer:
         if self.best_individual is None:
             logger.warning("GA: No valid strategy found during training.")
             return {
-                "id": "none", "conditions": [], "threshold": 0.5,
-                "sl_atr_mult": 1.5, "rr": 2.0,
+                "id": "none", "conditions": [], "shared_conditions": [], "shared_bonus_weight": 0.0,
+                "threshold": 0.5, "sl_atr_mult": 1.5, "rr": 2.0,
                 "score": float("-inf"), "method": "ga",
             }, []
 
